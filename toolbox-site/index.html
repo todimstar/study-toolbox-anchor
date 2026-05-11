@@ -1,0 +1,1277 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>学习工具箱</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Icons", "Helvetica Neue", "PingFang SC", sans-serif;
+      --bg: #f2f2f7;
+      --surface: rgba(255, 255, 255, 0.85);
+      --surface-solid: #ffffff;
+      --ink: #1c1c1e;
+      --muted: #8e8e93;
+      --soft: #e5e5ea;
+      --soft-blue: #e5f0ff;
+      --line: #c6c6c8;
+      --brand: #007aff;
+      --brand-dark: #0056b3;
+      --accent: #5856d6;
+      --good: #34c759;
+      --danger: #ff3b30;
+      --shadow: 0 4px 12px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0,0,0,0.02);
+      --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.04);
+      --radius-xl: 20px;
+      --radius-lg: 16px;
+      --radius-md: 10px;
+      --tap: 44px;
+      --page-pad: clamp(16px, 4vw, 24px);
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html { min-height: 100%; background: var(--bg); }
+    body {
+      min-height: 100dvh;
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input, textarea, select { font: inherit; }
+
+    button {
+      min-height: var(--tap);
+      border: 0;
+      border-radius: var(--radius-md);
+      padding: 10px 16px;
+      background: var(--brand);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .2s ease;
+      touch-action: manipulation;
+    }
+    button:active { opacity: 0.7; transform: scale(0.97); }
+    button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+      outline: 2px solid var(--brand);
+      outline-offset: 2px;
+    }
+    button.secondary {
+      background: var(--soft);
+      color: var(--brand);
+      font-weight: 600;
+    }
+    button.ghost {
+      background: transparent;
+      color: var(--brand);
+    }
+    button.danger {
+      background: #ffe5e5;
+      color: var(--danger);
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    input, textarea, select {
+      width: 100%;
+      min-height: var(--tap);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+      background: var(--surface-solid);
+      color: var(--ink);
+      transition: border-color .2s;
+    }
+    input:focus, textarea:focus, select:focus { border-color: var(--brand); }
+    textarea { min-height: 120px; resize: vertical; line-height: 1.5; }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--ink);
+      font-weight: 500;
+      margin: 12px 0;
+    }
+    label small, .helper, .meta { color: var(--muted); font-weight: 400; line-height: 1.4; font-size: 13px; }
+
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 34px; font-weight: 700; letter-spacing: 0.4px; line-height: 1.2; }
+    h2 { font-size: 28px; font-weight: 700; letter-spacing: 0.36px; }
+    h3 { font-size: 20px; font-weight: 600; letter-spacing: 0.38px; }
+    p { color: var(--muted); line-height: 1.5; }
+
+    .app-shell {
+      width: min(1000px, 100%);
+      margin: 0 auto;
+      padding: calc(env(safe-area-inset-top) + 20px) var(--page-pad) calc(100px + env(safe-area-inset-bottom));
+    }
+    .hero { display: none; gap: 16px; padding: 10px 0 20px; }
+    body.home-active .hero { display: grid; }
+    .hero-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .brand-mark {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-weight: 600; font-size: 17px;
+    }
+    .brand-dot {
+      width: 28px; height: 28px; border-radius: 6px;
+      background: linear-gradient(135deg, var(--brand), #34c759);
+    }
+    .mode-chip, .sync-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border-radius: 12px;
+      background: var(--surface-solid); border: 1px solid var(--line);
+      color: var(--muted); font-size: 12px; font-weight: 600;
+    }
+
+    .hero-card {
+      display: grid; gap: 16px; padding: 24px;
+      border-radius: var(--radius-xl); background: var(--surface-solid);
+      box-shadow: var(--shadow);
+    }
+    .hero-copy { display: grid; gap: 12px; }
+    .hero-actions, .action-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+    .stats-strip {
+      display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 10px;
+    }
+    .stat {
+      padding: 12px; border-radius: var(--radius-md);
+      background: var(--bg); text-align: center;
+    }
+    .stat strong { display: block; font-size: 22px; font-weight: 700; color: var(--ink); }
+    .stat span { color: var(--muted); font-size: 12px; font-weight: 500; }
+
+    .panel { display: none; animation: fadeIn .3s ease; }
+    .panel.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .panel-head {
+      display: flex; justify-content: space-between; align-items: flex-end;
+      gap: 12px; margin: 24px 0 16px;
+    }
+    .panel-head p { margin-top: 6px; }
+
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(12, minmax(0, 1fr)); }
+
+    .card, .tool-card, .list-card {
+      background: var(--surface-solid); border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-soft); overflow: hidden;
+    }
+    .tool-card {
+      grid-column: span 6; padding: 20px; text-align: left;
+      display: grid; gap: 12px; border: none; cursor: pointer; transition: transform .2s;
+    }
+    .tool-card:active { transform: scale(0.98); }
+    .tool-card-top { display: flex; justify-content: space-between; align-items: flex-start; }
+    .tool-card h3 { margin-bottom: 4px; }
+
+    .tag {
+      display: inline-flex; align-items: center; padding: 4px 8px;
+      border-radius: 6px; background: var(--soft); color: var(--muted);
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+    }
+    .tag.blue { background: var(--soft-blue); color: var(--brand); }
+    .tag.green { background: #e5f9eb; color: var(--good); }
+    .tag.red { background: #ffe5e5; color: var(--danger); }
+
+    .form-card { padding: 20px; grid-column: span 5; }
+    .preview-card { padding: 20px; grid-column: span 7; background: transparent; box-shadow: none; border: none; }
+    .full { grid-column: 1 / -1; }
+
+    .draft-box {
+      margin: 12px 0; padding: 12px; border-radius: var(--radius-md);
+      background: #fff9d6; border: 1px solid #ffcc00; color: #8a6d00; font-size: 13px;
+    }
+
+    .item-list { display: grid; gap: 12px; margin-top: 16px; }
+    .item {
+      display: grid; gap: 12px; padding: 16px; border-radius: var(--radius-lg);
+      background: var(--surface-solid); box-shadow: var(--shadow-soft);
+    }
+    .item-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .item-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .item-actions button { min-height: 36px; padding: 6px 12px; font-size: 14px; }
+
+    .empty-state {
+      display: grid; place-items: center; min-height: 120px; padding: 20px;
+      text-align: center; border-radius: var(--radius-lg); background: transparent;
+      color: var(--muted); font-size: 14px;
+    }
+
+    .todo-card { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; }
+    .todo-card.done { opacity: 0.6; }
+    .todo-card.done h3 { text-decoration: line-through; color: var(--muted); }
+
+    .chat-shell {
+      height: min(78dvh, 780px); min-height: 560px;
+      display: grid; grid-template-rows: auto auto 1fr auto;
+      overflow: hidden; padding: 0; background: var(--surface-solid);
+      border-radius: var(--radius-xl); box-shadow: var(--shadow);
+    }
+    .chat-header {
+      display: flex; align-items: center; gap: 12px; padding: 16px;
+      background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+    }
+    .avatar {
+      width: 40px; height: 40px; flex: 0 0 40px; border-radius: 50%;
+      display: grid; place-items: center; background: var(--brand);
+      color: #fff; font-weight: 600; font-size: 18px;
+    }
+    .chat-title { flex: 1; min-width: 0; }
+    .chat-title strong { display: block; font-size: 17px; }
+    .chat-title span { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+    .chat-settings { padding: 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
+    .settings-grid { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; margin-top: 8px; }
+
+    .chat-list {
+      overflow: auto; padding: 20px 16px; display: flex; flex-direction: column; gap: 16px;
+      background: var(--surface-solid);
+    }
+    .chat-message { max-width: 75%; display: grid; gap: 4px; }
+    .chat-message.self { align-self: flex-end; }
+    .chat-message.other { align-self: flex-start; }
+    .chat-meta { color: var(--muted); font-size: 11px; padding: 0 4px; }
+    .chat-message.self .chat-meta { text-align: right; }
+    .message-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+    }
+    .chat-message.self .message-row { flex-direction: row-reverse; }
+    .message-avatar {
+      width: 30px;
+      height: 30px;
+      flex: 0 0 30px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--soft);
+      color: var(--brand);
+      font-size: 14px;
+      font-weight: 700;
+      overflow: hidden;
+    }
+    .message-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .chat-bubble {
+      padding: 10px 14px; border-radius: 18px; font-size: 15px;
+      line-height: 1.4; white-space: pre-wrap;
+    }
+    .chat-message.self .chat-bubble {
+      background: var(--brand); color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .chat-message.other .chat-bubble {
+      background: var(--soft); color: var(--ink);
+      border-bottom-left-radius: 4px;
+    }
+    .chat-attachment {
+      display: grid;
+      gap: 6px;
+      color: inherit;
+      text-decoration: none;
+    }
+    .chat-attachment img {
+      display: block;
+      width: min(46vw, 220px);
+      max-height: 180px;
+      border-radius: 12px;
+      object-fit: cover;
+      background: rgba(255,255,255,.5);
+    }
+    .image-thumb {
+      display: block;
+      padding: 0;
+      min-height: 0;
+      background: transparent;
+      box-shadow: none;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .file-card {
+      display: grid;
+      gap: 4px;
+      min-width: min(58vw, 240px);
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.55);
+    }
+    .chat-message.other .file-card { background: rgba(255,255,255,.8); }
+    .file-card strong { font-size: 14px; word-break: break-word; }
+    .file-card span { opacity: .75; font-size: 12px; }
+
+    .chat-composer {
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      display: grid; grid-template-columns: auto auto 1fr auto; gap: 10px;
+      align-items: end; border-top: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px);
+    }
+    .attachment-preview {
+      grid-column: 1 / -1;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 14px;
+      background: var(--bg);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .attachment-preview.active { display: flex; }
+    .attach-button { min-width: 42px; padding-inline: 0; font-size: 18px; }
+    .chat-composer textarea {
+      min-height: 38px; max-height: 120px; resize: none; margin: 0;
+      border-radius: 18px; padding: 8px 12px; background: var(--surface-solid);
+    }
+    .chat-composer button { border-radius: 18px; font-weight: 600; padding: 8px 14px; min-height: 38px; }
+    .settings-toggle {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--brand);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .settings-toggle::-webkit-details-marker { display: none; }
+    .chat-settings[open] .settings-toggle { margin-bottom: 12px; }
+    .image-viewer {
+      position: fixed;
+      inset: 0;
+      z-index: 160;
+      display: none;
+      padding: 18px;
+      background: rgba(0,0,0,.88);
+    }
+    .image-viewer.active { display: grid; grid-template-rows: auto 1fr; gap: 12px; }
+    .image-viewer-bar {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding-top: env(safe-area-inset-top);
+    }
+    .image-viewer-bar button {
+      background: rgba(255,255,255,.18);
+      color: #fff;
+    }
+    .image-viewer-stage {
+      overflow: auto;
+      display: grid;
+      place-items: center;
+      min-height: 0;
+    }
+    .image-viewer-stage img {
+      max-width: 96%;
+      max-height: 82dvh;
+      object-fit: contain;
+      border-radius: 12px;
+      transform-origin: center center;
+      transition: transform .16s ease;
+    }
+    .task-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .task-status { font-weight: 700; }
+    .task-status.pending { color: var(--brand); }
+    .task-status.accepted { color: var(--good); }
+    .task-status.returned { color: var(--danger); }
+
+    .bottom-nav {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+      display: flex; justify-content: space-around;
+      padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+      background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(20px);
+      border-top: 1px solid rgba(0,0,0,0.1);
+    }
+    .nav-btn {
+      min-height: 48px; padding: 4px 12px; background: transparent;
+      color: var(--muted); border: 0; font-size: 10px; font-weight: 500;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    }
+    .nav-btn::before {
+      content: ''; display: block; width: 24px; height: 24px;
+      background: currentColor;
+      mask-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"/></svg>');
+      mask-size: cover;
+      -webkit-mask-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"/></svg>');
+      -webkit-mask-size: cover;
+    }
+    .nav-btn.active { color: var(--brand); }
+
+    .runner { position: fixed; inset: 0; z-index: 100; display: none; background: #000; }
+    .runner.active { display: block; }
+    .runner iframe { width: 100%; height: 100%; border: 0; background: #fff; border-radius: 0 0 20px 20px; }
+    .runner-controls {
+      position: fixed; right: 16px; bottom: 30px; z-index: 120;
+      display: flex; align-items: center; gap: 8px; padding: 8px;
+      border-radius: 30px; background: rgba(255,255,255,0.9); backdrop-filter: blur(10px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15); touch-action: none; user-select: none;
+    }
+    .drag-grip {
+      width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+      background: var(--soft); color: var(--muted); cursor: grab; font-size: 12px;
+    }
+    .runner-controls button { min-height: 36px; padding: 6px 12px; border-radius: 18px; }
+
+    .toast {
+      position: fixed; left: 50%; bottom: calc(100px + env(safe-area-inset-bottom));
+      transform: translateX(-50%) translateY(20px); z-index: 130;
+      padding: 10px 20px; border-radius: 24px; background: rgba(0,0,0,0.8);
+      color: #fff; font-size: 14px; font-weight: 500; opacity: 0; pointer-events: none;
+      transition: all .2s ease;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    .hidden { display: none !important; }
+    .toolbox-app .parent-browser-only { display: none !important; }
+
+    @media (max-width: 760px) {
+      .app-shell { padding-inline: 16px; }
+      .hero-card { padding: 20px; }
+      .tool-card, .form-card, .preview-card { grid-column: 1 / -1; }
+      .panel-head { flex-direction: column; align-items: flex-start; }
+      .settings-grid { grid-template-columns: 1fr; }
+      .chat-shell { height: calc(100dvh - 150px); border-radius: 16px; margin: 0 -16px; width: calc(100% + 32px); box-shadow: none; border-top: 1px solid var(--line); }
+      .bottom-nav { padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); }
+    }
+    @media (min-width: 980px) {
+      .hero-card { display: flex; align-items: center; justify-content: space-between; }
+      .stats-strip { margin-top: 0; }
+      .tool-card { grid-column: span 4; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="hero">
+      <div class="hero-top">
+        <div class="brand-mark" aria-label="学习工具箱">
+          <span class="brand-dot" aria-hidden="true"></span>
+          <span>学习工具箱</span>
+        </div>
+        <div class="sync-chip" id="topModeChip">检测运行环境中</div>
+      </div>
+
+      <section class="hero-card" aria-labelledby="heroTitle">
+        <div class="hero-copy">
+          <span class="mode-chip" id="heroModeChip">学习入口</span>
+          <h1 id="heroTitle">ToolBox</h1>
+          <p>选择一个工具开始。写下任务、运行小网页，或者留一句话。</p>
+          <div class="hero-actions">
+            <button type="button" onclick="showPanel('htmlPanel')">打开 HTML 运行器</button>
+            <button class="secondary" type="button" onclick="showPanel('chatPanel')">进入微聊</button>
+          </div>
+        </div>
+        <div class="stats-strip" aria-label="工具概览">
+          <div class="stat"><strong id="htmlCount">0</strong><span>本地 HTML</span></div>
+          <div class="stat"><strong id="todoCount">0</strong><span>小任务</span></div>
+          <div class="stat"><strong>微聊</strong><span>留言</span></div>
+        </div>
+      </section>
+    </header>
+
+    <main>
+      <section id="home" class="panel active" aria-labelledby="homeTitle">
+        <div class="panel-head">
+          <div>
+            <h2 id="homeTitle">功能区</h2>
+            <p>常用工具都在这里。</p>
+          </div>
+        </div>
+        <div class="grid">
+          <button class="tool-card" type="button" onclick="showPanel('htmlPanel')">
+            <span class="tool-card-top"><span class="tag">HTML</span><span class="tag blue">全屏运行</span></span>
+            <span>
+              <h3>HTML 运行器</h3>
+              <p>保存和运行 AI 生成的小网页、小游戏或互动教程。</p>
+            </span>
+          </button>
+          <button class="tool-card" type="button" onclick="showPanel('chatPanel')">
+            <span class="tool-card-top"><span class="tag">CHAT</span><span class="tag green">跨设备</span></span>
+            <span>
+              <h3>微聊留言</h3>
+              <p>像聊天一样留言，打开就能接着看。</p>
+            </span>
+          </button>
+          <button class="tool-card" type="button" onclick="showPanel('todoPanel')">
+            <span class="tool-card-top"><span class="tag">TASK</span><span class="tag blue">清单</span></span>
+            <span>
+              <h3>小任务</h3>
+              <p>记录今天要做的小事，完成后轻轻打勾。</p>
+            </span>
+          </button>
+          <button class="tool-card" type="button" onclick="showPanel('remotePanel')">
+            <span class="tool-card-top"><span class="tag">INBOX</span><span class="tag">材料</span></span>
+            <span>
+              <h3>学习收件箱</h3>
+              <p>查看家长放进来的网页、任务或学习材料。</p>
+            </span>
+          </button>
+        </div>
+      </section>
+
+      <section id="htmlPanel" class="panel" aria-labelledby="htmlTitleText">
+        <div class="panel-head">
+          <div>
+            <h2 id="htmlTitleText">HTML 运行器</h2>
+            <p>把 HTML 粘进来，保存后就能全屏打开。</p>
+          </div>
+          <button class="secondary" type="button" onclick="showPanel('home')">返回首页</button>
+        </div>
+        <div class="grid">
+          <section class="card form-card" aria-label="HTML 编辑表单">
+            <label>
+              标题
+              <input id="htmlTitle" placeholder="例如：英语单词小游戏" autocomplete="off" />
+              <small>给它起个容易认出的名字。</small>
+            </label>
+            <div id="htmlDraftStatus" class="draft-box" aria-live="polite">还没有导入 HTML。</div>
+            <label>
+              HTML 内容
+              <textarea id="htmlCode" spellcheck="false" placeholder="把 HTML 粘贴到这里，或者使用剪贴板导入。"></textarea>
+            </label>
+            <div class="action-row">
+              <button type="button" onclick="importHtmlClipboard()">从剪贴板导入</button>
+              <button type="button" onclick="saveHtml()">保存</button>
+              <button class="secondary" type="button" onclick="runRawHtml()">全屏预览</button>
+              <button class="danger" type="button" onclick="clearHtmlDraft()">清空草稿</button>
+            </div>
+          </section>
+          <section class="card preview-card" aria-label="HTML 记录">
+            <div class="item-title-row">
+              <div>
+                <h3>本地记录</h3>
+                <p class="helper">保存过的小网页会出现在这里。</p>
+              </div>
+              <span class="tag blue" id="htmlCountTag">0 个</span>
+            </div>
+            <div id="htmlList" class="item-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="todoPanel" class="panel" aria-labelledby="todoTitleText">
+        <div class="panel-head">
+          <div>
+            <h2 id="todoTitleText">任务投递</h2>
+            <p id="taskPanelHint">家长发布任务，孩子选择接受或退回。</p>
+          </div>
+          <button class="secondary" type="button" onclick="showPanel('home')">返回首页</button>
+        </div>
+        <div class="grid">
+          <section id="parentTaskBox" class="card form-card parent-browser-only">
+            <label>
+              投递任务
+              <input id="taskTitle" placeholder="例如：整理数学错题" autocomplete="off" />
+            </label>
+            <label>
+              任务说明
+              <textarea id="taskDescription" placeholder="可以写要求、完成标准、提醒。"></textarea>
+            </label>
+            <label>
+              拆分粒度
+              <select id="taskGranularity">
+                <option value="rough">粗粒度：拆到 3-5 个步骤</option>
+                <option value="normal" selected>普通粒度：拆到能立刻开始</option>
+                <option value="fine">细粒度：拆到每步 10-20 分钟</option>
+              </select>
+            </label>
+            <div class="action-row">
+              <button type="button" onclick="createRemoteTask()">投递给孩子</button>
+              <button class="secondary" type="button" onclick="loadRemoteTasks()">刷新状态</button>
+            </div>
+          </section>
+          <section class="card preview-card">
+            <div class="item-title-row">
+              <div>
+                <h3 id="taskListTitle">任务列表</h3>
+                <p class="helper" id="taskListHelper">状态会自动同步。</p>
+              </div>
+              <span class="tag green" id="todoCountTag">0 个</span>
+            </div>
+            <div id="todoList" class="item-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="chatPanel" class="panel" aria-labelledby="chatTitleText">
+        <div class="panel-head">
+          <div>
+            <h2 id="chatTitleText">微聊留言</h2>
+            <p>有什么想说的，写在这里就好。</p>
+          </div>
+          <button class="secondary" type="button" onclick="showPanel('home')">返回首页</button>
+        </div>
+        <div class="card chat-shell">
+          <div class="chat-header">
+            <div class="avatar" id="chatAvatar">聊</div>
+            <div class="chat-title">
+              <strong id="chatTitle">微聊</strong>
+              <span id="chatStatus">准备同步</span>
+            </div>
+            <span class="tag blue" id="chatRolePill">孩子端</span>
+          </div>
+          <details class="chat-settings" id="chatSettingsBox">
+            <summary class="settings-toggle">
+              <span>昵称和头像</span>
+              <span>展开</span>
+            </summary>
+            <p>可以给自己换个名字和头像。</p>
+            <div class="settings-grid">
+              <label>
+                昵称
+                <input id="chatName" placeholder="例如：小鹿" oninput="saveChatSettings()" autocomplete="name" />
+              </label>
+              <label>
+                头像
+                <input id="chatAvatarInput" placeholder="例如：🌙 / 小鹿 / 图片URL" oninput="saveChatSettings()" autocomplete="off" />
+              </label>
+              <label class="parent-browser-only">
+                口令
+                <input id="parentChatKey" placeholder="输入口令" oninput="saveChatSettings()" autocomplete="off" />
+              </label>
+            </div>
+          </details>
+          <div id="chatList" class="chat-list" aria-live="polite"></div>
+          <div class="chat-composer">
+            <div id="attachmentPreview" class="attachment-preview">
+              <span id="attachmentName"></span>
+              <button class="ghost" type="button" onclick="clearSelectedFile()">移除</button>
+            </div>
+            <button class="secondary" type="button" onclick="loadChatMessages(true)" aria-label="刷新微聊">刷新</button>
+            <button class="secondary attach-button" type="button" onclick="document.getElementById('chatFile').click()" aria-label="选择图片或文件">+</button>
+            <input id="chatFile" class="hidden" type="file" onchange="selectChatFile()" />
+            <textarea id="chatBody" placeholder="写一条留言..." rows="1"></textarea>
+            <button id="chatSendButton" type="button" onclick="sendChatMessage()">发送</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="remotePanel" class="panel" aria-labelledby="remoteTitleText">
+        <div class="panel-head">
+          <div>
+            <h2 id="remoteTitleText">学习收件箱</h2>
+            <p>收到的学习材料会放在这里。</p>
+          </div>
+          <button class="secondary" type="button" onclick="showPanel('home')">返回首页</button>
+        </div>
+        <div class="grid">
+          <article class="card remote-card full">
+            <div class="item-title-row">
+              <div>
+                <h3>暂时没有新内容</h3>
+                <p>有新的网页、任务或材料时，会出现在这里。</p>
+              </div>
+              <span class="tag">空</span>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <nav class="bottom-nav" aria-label="主导航">
+    <button id="nav-home" class="nav-btn active" type="button" onclick="showPanel('home')">首页</button>
+    <button id="nav-htmlPanel" class="nav-btn" type="button" onclick="showPanel('htmlPanel')">HTML</button>
+    <button id="nav-chatPanel" class="nav-btn" type="button" onclick="showPanel('chatPanel')">微聊</button>
+    <button id="nav-todoPanel" class="nav-btn" type="button" onclick="showPanel('todoPanel')">任务</button>
+    <button id="nav-remotePanel" class="nav-btn" type="button" onclick="showPanel('remotePanel')">投递</button>
+  </nav>
+
+  <section id="runner" class="runner" aria-label="HTML 全屏运行器">
+    <iframe id="runnerFrame" title="HTML 全屏运行窗口" sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock"></iframe>
+    <div id="runnerControls" class="runner-controls">
+      <div id="dragGrip" class="drag-grip" title="拖动控制条" aria-label="拖动控制条">拖</div>
+      <button class="secondary" type="button" onclick="exitRunner()">退出运行</button>
+      <button type="button" onclick="showPanel('htmlPanel')">记录</button>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="imageViewer" class="image-viewer">
+    <div class="image-viewer-bar">
+      <button type="button" onclick="closeImageViewer()">关闭</button>
+    </div>
+    <div class="image-viewer-stage" onclick="closeImageViewer()">
+      <img id="imageViewerImg" alt="图片预览" onclick="event.stopPropagation()" />
+    </div>
+  </div>
+
+  <script>
+    const htmlKey = 'study_toolbox_html_records_v1';
+    const chatSettingsKey = 'study_toolbox_chat_settings_v1';
+    const chatApi = '/api/micro-chat/messages';
+    const taskApi = '/api/tasks';
+    const childChatKey = 'child-chat-key-change-me';
+    const panelIds = ['home', 'htmlPanel', 'todoPanel', 'chatPanel', 'remotePanel'];
+    const isToolboxApp = !!(window.StudyToolbox && StudyToolbox.getAppVersion);
+    let htmlDraft = '';
+    let chatLastId = 0;
+    let toastTimer = null;
+    let selectedChatFile = null;
+
+    document.body.classList.toggle('toolbox-app', isToolboxApp);
+    document.body.classList.add('home-active');
+
+    function showPanel(id) {
+      for (const panel of panelIds) {
+        document.getElementById(panel).classList.toggle('active', panel === id);
+        const nav = document.getElementById('nav-' + panel);
+        if (nav) nav.classList.toggle('active', panel === id);
+      }
+      document.body.classList.toggle('home-active', id === 'home');
+      exitRunner();
+      renderHtmlList();
+      updateStats();
+      if (id === 'chatPanel') loadChatMessages(true);
+      if (id === 'todoPanel') loadRemoteTasks();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function read(key) {
+      try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
+    }
+
+    function write(key, value) {
+      localStorage.setItem(key, JSON.stringify(value));
+    }
+
+    function toast(message) {
+      const node = document.getElementById('toast');
+      node.textContent = message;
+      node.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => node.classList.remove('show'), 2800);
+    }
+
+    function updateStats() {
+      const htmlTotal = read(htmlKey).length;
+      const todoTotal = Number(document.getElementById('todoCountTag').dataset.count || 0);
+      document.getElementById('htmlCount').textContent = htmlTotal;
+      document.getElementById('todoCount').textContent = todoTotal;
+      document.getElementById('htmlCountTag').textContent = htmlTotal + ' 个';
+      document.getElementById('todoCountTag').textContent = todoTotal + ' 个';
+      const modeText = isToolboxApp ? '孩子端' : '家长端';
+      document.getElementById('heroModeChip').textContent = modeText;
+      document.getElementById('topModeChip').textContent = modeText;
+    }
+
+    function chatSettings() {
+      const stored = read(chatSettingsKey)[0] || {};
+      const role = isToolboxApp ? 'child' : 'parent';
+      const defaultName = role === 'child' ? '孩子' : '家长';
+      const defaultAvatar = role === 'child' ? '孩' : '家';
+      const roleStore = stored[role] || {};
+      if (isToolboxApp) {
+        return {
+          role,
+          name: roleStore.name || stored.childName || stored.name || defaultName,
+          avatar: roleStore.avatar || stored.childAvatar || stored.avatar || defaultAvatar,
+          parentKey: ''
+        };
+      }
+      return {
+        role,
+        name: roleStore.name || stored.name || defaultName,
+        avatar: roleStore.avatar || stored.avatar || defaultAvatar,
+        parentKey: stored.parentKey || ''
+      };
+    }
+
+    function applyChatSettings() {
+      const settings = chatSettings();
+      const nameInput = document.getElementById('chatName');
+      const keyInput = document.getElementById('parentChatKey');
+      const avatarInput = document.getElementById('chatAvatarInput');
+      if (nameInput) nameInput.value = settings.name;
+      if (keyInput) keyInput.value = settings.parentKey;
+      if (avatarInput) avatarInput.value = settings.avatar;
+      document.getElementById('chatRolePill').textContent = settings.role === 'child' ? '孩子端' : '家长端';
+      renderAvatar(document.getElementById('chatAvatar'), settings.avatar, settings.name);
+      document.getElementById('chatTitle').textContent = settings.role === 'child' ? '和家长微聊' : '和孩子微聊';
+    }
+
+    function saveChatSettings() {
+      const role = isToolboxApp ? 'child' : 'parent';
+      const old = read(chatSettingsKey)[0] || {};
+      const settings = {
+        ...old,
+        parentKey: document.getElementById('parentChatKey').value.trim()
+      };
+      settings[role] = {
+        name: document.getElementById('chatName').value.trim() || (role === 'parent' ? '家长' : '孩子'),
+        avatar: document.getElementById('chatAvatarInput').value.trim() || (role === 'parent' ? '家' : '孩')
+      };
+      write(chatSettingsKey, [settings]);
+      applyChatSettings();
+    }
+
+    function formatBytes(text) {
+      const bytes = new Blob([text || '']).size;
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+    }
+
+    function setHtmlDraft(html, source) {
+      htmlDraft = html || '';
+      document.getElementById('htmlCode').value = '';
+      document.getElementById('htmlDraftStatus').innerHTML = htmlDraft
+        ? '已导入：<strong>' + formatBytes(htmlDraft) + '</strong> · ' + escapeHtml(source || '草稿') + '<br><small>可以直接保存，或先全屏预览。</small>'
+        : '还没有导入 HTML。';
+    }
+
+    async function importHtmlClipboard() {
+      if (window.StudyToolbox && StudyToolbox.getClipboardText) {
+        const text = StudyToolbox.getClipboardText();
+        if (!text.trim()) return toast('剪贴板里没有文本');
+        setHtmlDraft(text, '来自 App 剪贴板');
+        toast('已导入剪贴板 HTML');
+        return;
+      }
+      try {
+        const text = await navigator.clipboard.readText();
+        if (!text.trim()) return toast('剪贴板里没有文本');
+        setHtmlDraft(text, '来自浏览器剪贴板');
+        toast('已导入剪贴板 HTML');
+      } catch (error) {
+        toast('无法直接读取剪贴板，请粘贴到输入框');
+      }
+    }
+
+    document.getElementById('htmlCode').addEventListener('paste', event => {
+      const text = event.clipboardData && event.clipboardData.getData('text/plain');
+      if (!text) return;
+      event.preventDefault();
+      setHtmlDraft(text, '来自粘贴');
+      toast('已保存为草稿，避免输入框卡顿');
+    });
+
+    function saveHtml() {
+      const title = document.getElementById('htmlTitle').value.trim() || '未命名 HTML';
+      const html = htmlDraft || document.getElementById('htmlCode').value;
+      if (!html.trim()) return toast('先粘贴 HTML 内容');
+      const all = read(htmlKey);
+      all.unshift({
+        id: Date.now().toString(36),
+        title,
+        html,
+        source: '本地创建',
+        updatedAt: new Date().toLocaleString()
+      });
+      write(htmlKey, all);
+      document.getElementById('htmlTitle').value = '';
+      setHtmlDraft('', '');
+      renderHtmlList();
+      updateStats();
+      toast('HTML 已保存');
+    }
+
+    function runRawHtml() {
+      const html = htmlDraft || document.getElementById('htmlCode').value;
+      if (!html.trim()) return toast('先导入或粘贴 HTML');
+      setRunner(html);
+    }
+
+    function clearHtmlDraft() {
+      setHtmlDraft('', '');
+      document.getElementById('htmlCode').value = '';
+      toast('草稿已清空');
+    }
+
+    function setRunner(html) {
+      document.getElementById('runnerFrame').srcdoc = html || '<p style="font-family:sans-serif;padding:24px">还没有内容</p>';
+      document.getElementById('runner').classList.add('active');
+      document.body.style.overflow = 'hidden';
+      if (window.StudyToolbox && StudyToolbox.setFullscreen) StudyToolbox.setFullscreen(true);
+    }
+
+    function exitRunner(resetFullscreen = true) {
+      const runner = document.getElementById('runner');
+      if (!runner.classList.contains('active')) return;
+      runner.classList.remove('active');
+      document.getElementById('runnerFrame').removeAttribute('srcdoc');
+      document.body.style.overflow = '';
+      if (resetFullscreen && window.StudyToolbox && StudyToolbox.setFullscreen) StudyToolbox.setFullscreen(false);
+    }
+
+    function runSavedHtml(id) {
+      const item = read(htmlKey).find(record => record.id === id);
+      if (item) setRunner(item.html);
+    }
+
+    function editSavedHtml(id) {
+      const item = read(htmlKey).find(record => record.id === id);
+      if (!item) return;
+      document.getElementById('htmlTitle').value = item.title;
+      setHtmlDraft(item.html, '来自已保存记录');
+      deleteSavedHtml(id, false);
+      toast('已载入编辑草稿');
+    }
+
+    function deleteSavedHtml(id, ask = true) {
+      if (ask && !confirm('删除这条 HTML 记录？')) return;
+      write(htmlKey, read(htmlKey).filter(record => record.id !== id));
+      renderHtmlList();
+      updateStats();
+      if (ask) toast('HTML 记录已删除');
+    }
+
+    function renderHtmlList() {
+      const list = document.getElementById('htmlList');
+      const all = read(htmlKey);
+      list.innerHTML = all.length ? all.map(item =>
+        '<article class="item">' +
+        '<div class="item-title-row">' +
+        '<div><h3>' + escapeHtml(item.title) + '</h3><p class="meta">' + escapeHtml(item.source) + ' · ' + escapeHtml(item.updatedAt) + ' · ' + formatBytes(item.html) + '</p></div>' +
+        '<span class="tag blue">本地</span>' +
+        '</div>' +
+        '<div class="item-actions">' +
+        '<button type="button" onclick="runSavedHtml(\'' + item.id + '\')">全屏运行</button>' +
+        '<button class="secondary" type="button" onclick="editSavedHtml(\'' + item.id + '\')">编辑</button>' +
+        '<button class="danger" type="button" onclick="deleteSavedHtml(\'' + item.id + '\')">删除</button>' +
+        '</div>' +
+        '</article>'
+      ).join('') : '<div class="empty-state">暂无 HTML 记录。先从剪贴板导入一个 AI 生成的小网页试试。</div>';
+    }
+
+    function taskKey(settings) {
+      return settings.role === 'parent' ? settings.parentKey : childChatKey;
+    }
+
+    async function createRemoteTask() {
+      saveChatSettings();
+      const settings = chatSettings();
+      const key = taskKey(settings);
+      if (!key) return toast('请先填写口令');
+      const title = document.getElementById('taskTitle').value.trim();
+      if (!title) return toast('先写任务标题');
+      const res = await fetch(taskApi, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Task-Key': key },
+        body: JSON.stringify({
+          title,
+          description: document.getElementById('taskDescription').value.trim(),
+          granularity: document.getElementById('taskGranularity').value,
+          created_by_name: settings.name
+        })
+      });
+      if (!res.ok) return toast('投递失败，稍后再试');
+      document.getElementById('taskTitle').value = '';
+      document.getElementById('taskDescription').value = '';
+      await loadRemoteTasks();
+      toast('已投递给孩子');
+    }
+
+    async function updateRemoteTask(id, status) {
+      const settings = chatSettings();
+      const key = taskKey(settings);
+      if (!key) return toast('请先填写口令');
+      const reply = status === 'returned' ? prompt('写一句退回原因，可留空') || '' : '';
+      const res = await fetch(taskApi + '/' + id + '?role=' + settings.role, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Task-Key': key },
+        body: JSON.stringify({ status, child_reply: reply })
+      });
+      if (!res.ok) return toast('更新失败，稍后再试');
+      await loadRemoteTasks();
+      toast(status === 'pending' ? '已重新投递' : '状态已更新');
+    }
+
+    async function loadRemoteTasks() {
+      const settings = chatSettings();
+      const key = taskKey(settings);
+      const list = document.getElementById('todoList');
+      const names = { rough: '粗粒度', normal: '普通粒度', fine: '细粒度' };
+      document.getElementById('taskListTitle').textContent = settings.role === 'parent' ? '投递状态' : '收到的任务';
+      document.getElementById('taskListHelper').textContent = settings.role === 'parent' ? '可以看到孩子是否接受或退回。' : '选择接受，或退回给家长。';
+      if (!key) {
+        list.innerHTML = '<div class="empty-state">请先在微聊里填写口令。</div>';
+        return;
+      }
+      try {
+        const res = await fetch(taskApi + '?role=' + settings.role, { headers: { 'X-Task-Key': key }, cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const all = data.items || [];
+        document.getElementById('todoCountTag').dataset.count = all.length;
+        document.getElementById('todoCountTag').textContent = all.length + ' 个';
+        document.getElementById('todoCount').textContent = all.length;
+        list.innerHTML = all.length ? all.map(item => renderTaskItem(item, settings.role, names)).join('') :
+          '<div class="empty-state">' + (settings.role === 'parent' ? '还没有投递任务。' : '暂时没有收到新任务。') + '</div>';
+      } catch (error) {
+        list.innerHTML = '<div class="empty-state">暂时连不上任务列表，稍后再试。</div>';
+      }
+    }
+
+    function renderTaskItem(item, role, names) {
+      const statusNames = { pending: '待孩子处理', accepted: '已接受', returned: '已退回', done: '已完成' };
+      const actions = role === 'child'
+        ? childTaskActions(item)
+        : parentTaskActions(item);
+      return '<article class="item todo-card ' + (item.status === 'done' ? 'done' : '') + '">' +
+        '<div>' +
+        '<h3>' + escapeHtml(item.title) + '</h3>' +
+        '<p class="meta">' + escapeHtml(names[item.granularity] || item.granularity) + ' · <span class="task-status ' + escapeAttr(item.status) + '">' + escapeHtml(statusNames[item.status] || item.status) + '</span> · ' + escapeHtml(formatTime(item.updated_at || item.created_at)) + '</p>' +
+        (item.description ? '<p>' + escapeHtml(item.description) + '</p>' : '') +
+        (item.child_reply ? '<p class="meta">退回原因：' + escapeHtml(item.child_reply) + '</p>' : '') +
+        '</div>' +
+        '<div class="item-actions">' + actions + '</div>' +
+        '</article>';
+    }
+
+    function childTaskActions(item) {
+      if (item.status === 'pending' || item.status === 'returned') {
+        return '<button type="button" onclick="updateRemoteTask(' + item.id + ', &quot;accepted&quot;)">接受</button>' +
+          '<button class="danger" type="button" onclick="updateRemoteTask(' + item.id + ', &quot;returned&quot;)">退回</button>';
+      }
+      if (item.status === 'accepted') {
+        return '<button type="button" onclick="updateRemoteTask(' + item.id + ', &quot;done&quot;)">标记完成</button>';
+      }
+      return '<span class="tag green">已完成</span>';
+    }
+
+    function parentTaskActions(item) {
+      if (item.status === 'done') return '<span class="tag green">完成</span>';
+      return '<button class="secondary" type="button" onclick="loadRemoteTasks()">刷新</button>';
+    }
+
+    async function loadChatMessages(force = false) {
+      const status = document.getElementById('chatStatus');
+      try {
+        const url = force ? chatApi : chatApi + '?since_id=' + chatLastId;
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const settings = chatSettings();
+        const existing = force ? [] : Array.from(document.querySelectorAll('[data-chat-id]')).map(node => Number(node.dataset.chatId));
+        const list = document.getElementById('chatList');
+        if (force) list.innerHTML = '';
+        if (list.querySelector('.empty-state')) list.innerHTML = '';
+        for (const item of data.items || []) {
+          if (existing.includes(item.id)) continue;
+          chatLastId = Math.max(chatLastId, item.id);
+          const side = item.sender_role === settings.role ? 'self' : 'other';
+          list.insertAdjacentHTML('beforeend',
+            '<div class="chat-message ' + side + '" data-chat-id="' + item.id + '">' +
+            '<span class="chat-meta">' + escapeHtml(item.sender_name) + ' · ' + escapeHtml(formatTime(item.created_at)) + '</span>' +
+            '<div class="message-row">' +
+            '<div class="message-avatar">' + renderAvatarHtml(item.sender_avatar, item.sender_name) + '</div>' +
+            '<div class="chat-bubble">' + renderMessageContent(item) + '</div>' +
+            '</div>' +
+            '</div>'
+          );
+        }
+        if (!list.children.length) {
+          list.innerHTML = '<div class="empty-state">还没有留言。写第一句吧。</div>';
+        }
+        list.scrollTop = list.scrollHeight;
+        status.textContent = '已同步';
+      } catch (error) {
+        status.textContent = '暂时连不上，稍后再试';
+      }
+    }
+
+    async function sendChatMessage() {
+      saveChatSettings();
+      const settings = chatSettings();
+      const body = document.getElementById('chatBody').value.trim();
+      if (!body && !selectedChatFile) return toast('先写一条留言或选择文件');
+      const key = settings.role === 'parent' ? settings.parentKey : childChatKey;
+      if (!key) return toast('请先填写口令');
+      const sendButton = document.getElementById('chatSendButton');
+      if (sendButton) sendButton.disabled = true;
+      try {
+        const res = selectedChatFile
+          ? await sendFileMessage(settings, key, body)
+          : await fetch(chatApi, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Chat-Key': key },
+              body: JSON.stringify({
+                sender_role: settings.role,
+                sender_name: settings.name,
+                sender_avatar: settings.avatar,
+                body
+              })
+            });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        document.getElementById('chatBody').value = '';
+        clearSelectedFile();
+        await loadChatMessages(true);
+        toast('已发送');
+      } catch (error) {
+        toast('发送失败，稍后再试');
+      } finally {
+        if (sendButton) sendButton.disabled = false;
+      }
+    }
+
+    function sendFileMessage(settings, key, body) {
+      const form = new FormData();
+      form.append('sender_role', settings.role);
+      form.append('sender_name', settings.name);
+      form.append('sender_avatar', settings.avatar || '');
+      form.append('body', body);
+      form.append('upload', selectedChatFile);
+      return fetch(chatApi + '/with-file', {
+        method: 'POST',
+        headers: { 'X-Chat-Key': key },
+        body: form
+      });
+    }
+
+    function selectChatFile() {
+      const input = document.getElementById('chatFile');
+      selectedChatFile = input.files && input.files[0] ? input.files[0] : null;
+      updateAttachmentPreview();
+    }
+
+    function clearSelectedFile() {
+      selectedChatFile = null;
+      document.getElementById('chatFile').value = '';
+      updateAttachmentPreview();
+    }
+
+    function updateAttachmentPreview() {
+      const box = document.getElementById('attachmentPreview');
+      const name = document.getElementById('attachmentName');
+      box.classList.toggle('active', !!selectedChatFile);
+      name.textContent = selectedChatFile ? selectedChatFile.name + ' · ' + formatFileSize(selectedChatFile.size) : '';
+    }
+
+    function renderMessageContent(item) {
+      const body = item.body ? '<div>' + escapeHtml(item.body) + '</div>' : '';
+      if (!item.attachment_url) return escapeHtml(item.body || '');
+      const url = escapeAttr(item.attachment_url);
+      const name = escapeHtml(item.attachment_name || '文件');
+      if (item.message_type === 'image') {
+        return '<div class="chat-attachment">' +
+          '<button class="image-thumb" type="button" onclick="openImageViewer(\'' + url + '\')">' +
+          '<img src="' + url + '" alt="' + name + '" loading="lazy" /></button>' + body + '</div>';
+      }
+      return '<a class="chat-attachment file-card" href="' + url + '" target="_blank" rel="noopener" download>' +
+        '<strong>' + name + '</strong><span>' + escapeHtml(formatFileSize(item.attachment_size)) + '</span>' + body + '</a>';
+    }
+
+    function renderAvatarHtml(value, name) {
+      const avatar = (value || '').trim();
+      if (/^https?:\/\//i.test(avatar) || avatar.startsWith('/')) {
+        return '<img src="' + escapeAttr(avatar) + '" alt="' + escapeAttr(name || '头像') + '" loading="lazy" />';
+      }
+      return escapeHtml(avatar || (name || '友').slice(0, 1));
+    }
+
+    function renderAvatar(node, value, name) {
+      node.innerHTML = renderAvatarHtml(value, name);
+    }
+
+    function openImageViewer(url) {
+      const viewer = document.getElementById('imageViewer');
+      const image = document.getElementById('imageViewerImg');
+      image.src = url;
+      image.alt = '图片预览';
+      viewer.classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeImageViewer() {
+      const viewer = document.getElementById('imageViewer');
+      viewer.classList.remove('active');
+      document.getElementById('imageViewerImg').removeAttribute('src');
+      document.body.style.overflow = '';
+    }
+
+    function formatFileSize(size) {
+      const bytes = Number(size || 0);
+      if (!bytes) return '文件';
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+    }
+
+    function formatTime(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(date);
+    }
+
+    function notifyApp(title, message) {
+      if (window.StudyToolbox && StudyToolbox.showNotification) {
+        StudyToolbox.showNotification(title, message);
+        toast('提醒已发出');
+      } else {
+        toast(message);
+      }
+    }
+
+    function escapeHtml(text) {
+      return String(text).replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
+    }
+
+    function escapeAttr(text) {
+      return escapeHtml(text).replace(/`/g, '&#96;');
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function installRunnerDrag() {
+      const controls = document.getElementById('runnerControls');
+      const grip = document.getElementById('dragGrip');
+      let dragging = false;
+      let offsetX = 0;
+      let offsetY = 0;
+      grip.addEventListener('pointerdown', event => {
+        dragging = true;
+        grip.setPointerCapture(event.pointerId);
+        const rect = controls.getBoundingClientRect();
+        offsetX = event.clientX - rect.left;
+        offsetY = event.clientY - rect.top;
+      });
+      grip.addEventListener('pointermove', event => {
+        if (!dragging) return;
+        const x = clamp(event.clientX - offsetX, 6, innerWidth - controls.offsetWidth - 6);
+        const y = clamp(event.clientY - offsetY, 6, innerHeight - controls.offsetHeight - 6);
+        controls.style.left = x + 'px';
+        controls.style.top = y + 'px';
+        controls.style.right = 'auto';
+        controls.style.bottom = 'auto';
+      });
+      grip.addEventListener('pointerup', () => { dragging = false; });
+      grip.addEventListener('pointercancel', () => { dragging = false; });
+    }
+
+    document.getElementById('chatBody').addEventListener('keydown', event => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        sendChatMessage();
+      }
+    });
+
+    renderHtmlList();
+    loadRemoteTasks();
+    updateStats();
+    applyChatSettings();
+    installRunnerDrag();
+    setInterval(() => {
+      if (document.getElementById('chatPanel').classList.contains('active')) {
+        loadChatMessages(false);
+      }
+    }, 3000);
+  </script>
+</body>
+</html>
