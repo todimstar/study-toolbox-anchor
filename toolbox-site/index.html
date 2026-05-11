@@ -515,7 +515,7 @@
             <span class="tool-card-top"><span class="tag">INBOX</span><span class="tag">材料</span></span>
             <span>
               <h3>学习收件箱</h3>
-              <p>查看家长放进来的网页、任务或学习材料。</p>
+              <p>查看高人放进来的网页、任务或学习材料。</p>
             </span>
           </button>
         </div>
@@ -565,7 +565,7 @@
         <div class="panel-head">
           <div>
             <h2 id="todoTitleText">任务投递</h2>
-            <p id="taskPanelHint">家长发布任务，孩子选择接受或退回。</p>
+            <p id="taskPanelHint">高人发布任务，queen选择接受或退回。</p>
           </div>
           <button class="secondary" type="button" onclick="showPanel('home')">返回首页</button>
         </div>
@@ -588,7 +588,7 @@
               </select>
             </label>
             <div class="action-row">
-              <button type="button" onclick="createRemoteTask()">投递给孩子</button>
+              <button type="button" onclick="createRemoteTask()">投递给对方</button>
               <button class="secondary" type="button" onclick="loadRemoteTasks()">刷新状态</button>
             </div>
           </section>
@@ -620,7 +620,7 @@
               <strong id="chatTitle">微聊</strong>
               <span id="chatStatus">准备同步</span>
             </div>
-            <span class="tag blue" id="chatRolePill">孩子端</span>
+            <span class="tag blue" id="chatRolePill">queen端</span>
           </div>
           <details class="chat-settings" id="chatSettingsBox">
             <summary class="settings-toggle">
@@ -768,7 +768,7 @@
       document.getElementById('todoCount').textContent = todoTotal;
       document.getElementById('htmlCountTag').textContent = htmlTotal + ' 个';
       document.getElementById('todoCountTag').textContent = todoTotal + ' 个';
-      const modeText = isToolboxApp ? '孩子端' : '家长端';
+      const modeText = isToolboxApp ? 'queen端' : '高人端';
       document.getElementById('heroModeChip').textContent = modeText;
       document.getElementById('topModeChip').textContent = modeText;
     }
@@ -776,8 +776,8 @@
     function chatSettings() {
       const stored = read(chatSettingsKey)[0] || {};
       const role = isToolboxApp ? 'child' : 'parent';
-      const defaultName = role === 'child' ? '孩子' : '家长';
-      const defaultAvatar = role === 'child' ? '孩' : '家';
+      const defaultName = role === 'child' ? 'child孩子' : '市外高人';
+      const defaultAvatar = role === 'child' ? 'child' : '高';
       const roleStore = stored[role] || {};
       if (isToolboxApp) {
         return {
@@ -803,9 +803,9 @@
       if (nameInput) nameInput.value = settings.name;
       if (keyInput) keyInput.value = settings.parentKey;
       if (avatarInput) avatarInput.value = settings.avatar;
-      document.getElementById('chatRolePill').textContent = settings.role === 'child' ? '孩子端' : '家长端';
+      document.getElementById('chatRolePill').textContent = settings.role === 'child' ? 'queen端' : '高人端';
       renderAvatar(document.getElementById('chatAvatar'), settings.avatar, settings.name);
-      document.getElementById('chatTitle').textContent = settings.role === 'child' ? '和家长微聊' : '和孩子微聊';
+      document.getElementById('chatTitle').textContent = settings.role === 'child' ? '与高人闲谈' : '与child聊天';
     }
 
     function saveChatSettings() {
@@ -816,7 +816,7 @@
         parentKey: document.getElementById('parentChatKey').value.trim()
       };
       settings[role] = {
-        name: document.getElementById('chatName').value.trim() || (role === 'parent' ? '家长' : '孩子'),
+        name: document.getElementById('chatName').value.trim() || (role === 'parent' ? '高人' : 'child孩子'),
         avatar: document.getElementById('chatAvatarInput').value.trim() || (role === 'parent' ? '家' : '孩')
       };
       write(chatSettingsKey, [settings]);
@@ -977,7 +977,7 @@
       document.getElementById('taskTitle').value = '';
       document.getElementById('taskDescription').value = '';
       await loadRemoteTasks();
-      toast('已投递给孩子');
+      toast('已投递给对方');
     }
 
     async function updateRemoteTask(id, status) {
@@ -1001,7 +1001,7 @@
       const list = document.getElementById('todoList');
       const names = { rough: '粗粒度', normal: '普通粒度', fine: '细粒度' };
       document.getElementById('taskListTitle').textContent = settings.role === 'parent' ? '投递状态' : '收到的任务';
-      document.getElementById('taskListHelper').textContent = settings.role === 'parent' ? '可以看到孩子是否接受或退回。' : '选择接受，或退回给家长。';
+      document.getElementById('taskListHelper').textContent = settings.role === 'parent' ? '可以看到对方是否接受或退回。' : '选择接受，或退回给远方高人。';
       if (!key) {
         list.innerHTML = '<div class="empty-state">请先在微聊里填写口令。</div>';
         return;
@@ -1022,7 +1022,7 @@
     }
 
     function renderTaskItem(item, role, names) {
-      const statusNames = { pending: '待孩子处理', accepted: '已接受', returned: '已退回', done: '已完成' };
+      const statusNames = { pending: '待对方处理', accepted: '已接受', returned: '已退回', done: '已完成' };
       const resendText = item.resubmit_count ? ' · 重发 ' + item.resubmit_count + ' 次' : '';
       const actions = role === 'child'
         ? childTaskActions(item)
