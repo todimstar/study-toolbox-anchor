@@ -4,21 +4,16 @@ plugins {
 }
 
 android {
-    namespace = "com.silentinstaller"
+    namespace = "com.studytoolbox.anchor"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.silentinstaller"
+        applicationId = "com.studytoolbox.anchor"
         minSdk = 29  // Android 10
         targetSdk = 34
         versionCode = 1
-        versionName = "0.1.0"
-
-        // Server base URL – your PC's LAN IP (change for different networks)
-        buildConfigField("String", "SERVER_BASE_URL", "\"http://172.20.88.75:8000\"")
-        buildConfigField("String", "WS_URL", "\"ws://172.20.88.75:8000/ws/device\"")
-        // Device pre-shared key – must match DEVICE_PSK on server
-        buildConfigField("String", "DEVICE_PSK", "\"device-preshared-key-2024\"")
+        versionName = "0.1.0-anchor"
+        buildConfigField("String", "TOOLBOX_URL", "\"https://toolbox.zakuku.top/\"")
     }
 
     buildTypes {
@@ -46,21 +41,5 @@ android {
 }
 
 dependencies {
-    // AndroidX core libraries
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
-    implementation("androidx.lifecycle:lifecycle-service:2.8.6")
-
-    // WorkManager for task scheduling & retry
-    implementation("androidx.work:work-runtime-ktx:2.9.1")
-
-    // OkHttp for WebSocket & file download
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-
-    // Kotlin coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-
-    // JSON parsing (without codegen for simplicity)
-    implementation("com.google.code.gson:gson:2.11.0")
 }

@@ -12,5 +12,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SilentInstaller"
+rootProject.name = "StudyToolboxAnchor"
 include(":app")

@@ -1,4 +1,3 @@
 <resources>
-    <string name="app_name">学习助手</string>
-    <string name="notification_channel">学习助手运行中</string>
+    <string name="app_name">学习工具箱</string>
 </resources>
