@@ -1,5 +1,6 @@
 """Database engine, session factory, and Base declarative model."""
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -26,3 +27,17 @@ async def init_db() -> None:
     """Create all tables on startup."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        columns = await conn.execute(text("PRAGMA table_info(micro_chat_messages)"))
+        existing = {row[1] for row in columns.fetchall()}
+        if existing:
+            migrations = {
+                "sender_avatar": "ALTER TABLE micro_chat_messages ADD COLUMN sender_avatar VARCHAR(64) NOT NULL DEFAULT ''",
+                "message_type": "ALTER TABLE micro_chat_messages ADD COLUMN message_type VARCHAR(16) NOT NULL DEFAULT 'text'",
+                "attachment_url": "ALTER TABLE micro_chat_messages ADD COLUMN attachment_url TEXT",
+                "attachment_name": "ALTER TABLE micro_chat_messages ADD COLUMN attachment_name VARCHAR(255)",
+                "attachment_mime": "ALTER TABLE micro_chat_messages ADD COLUMN attachment_mime VARCHAR(128)",
+                "attachment_size": "ALTER TABLE micro_chat_messages ADD COLUMN attachment_size INTEGER",
+            }
+            for column, statement in migrations.items():
+                if column not in existing:
+                    await conn.execute(text(statement))

@@ -1,15 +1,17 @@
-"""Remote Silent Installer – FastAPI Application Entry Point."""
+"""Study Toolbox API application entry point."""
 
 import logging
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import init_db
-from app.routes import apps, auth, devices, tasks, ws
+from app.routes import micro_chat, study_tasks
 
 # Force UTF-8 for console logging on Windows
 handler = logging.StreamHandler(sys.stdout)
@@ -35,7 +37,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Remote Silent Installer API",
+    title="Study Toolbox API",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -43,20 +45,24 @@ app = FastAPI(
 # CORS – allow web panel dev server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://toolbox.zakuku.top",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Register routers
-app.include_router(auth.router)
-app.include_router(apps.router)
-app.include_router(devices.router)
-app.include_router(tasks.router)
-app.include_router(ws.router)
+app.include_router(micro_chat.router)
+app.include_router(study_tasks.router)
+
+upload_root = Path(settings.UPLOAD_DIR)
+upload_root.mkdir(parents=True, exist_ok=True)
+app.mount("/api/uploads", StaticFiles(directory=upload_root), name="uploads")
 
 
 @app.get("/")
 async def root():
-    return {"service": "Remote Silent Installer API", "version": "0.1.0"}
+    return {"service": "Study Toolbox API", "version": "0.1.0"}

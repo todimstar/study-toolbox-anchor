@@ -1,8 +1,6 @@
-"""SQLAlchemy models — import all here so Alembic / create_all sees them."""
+"""SQLAlchemy models — import all here so create_all sees them."""
 
-from app.models.user import User
-from app.models.device import Device
-from app.models.apk import APKFile
-from app.models.task import InstallTask
+from app.models.micro_chat import MicroChatMessage
+from app.models.study_task import StudyTask
 
-__all__ = ["User", "Device", "APKFile", "InstallTask"]
+__all__ = ["MicroChatMessage", "StudyTask"]

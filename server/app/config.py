@@ -12,17 +12,11 @@ load_dotenv(BASE_DIR / ".env")
 class Settings:
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./silent_installer.db")
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me")
-    UPLOAD_DIR: Path = BASE_DIR / os.getenv("UPLOAD_DIR", "uploads")
-    DEVICE_PSK: str = os.getenv("DEVICE_PSK", "device-preshared-key")
-
-    # JWT
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
-
-    # Ensure upload directory exists
-    def __init__(self) -> None:
-        self.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./toolbox.db")
+    PARENT_CHAT_KEY: str = os.getenv("PARENT_CHAT_KEY", "parent-chat-key-change-me")
+    CHILD_CHAT_KEY: str = os.getenv("CHILD_CHAT_KEY", "child-chat-key-change-me")
+    UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "./uploads")
+    MAX_UPLOAD_BYTES: int = int(os.getenv("MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))
 
 
 settings = Settings()
