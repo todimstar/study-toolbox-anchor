@@ -13,6 +13,7 @@ class StudyTask(Base):
     description = Column(Text, nullable=False, default="")
     granularity = Column(String(16), nullable=False, default="normal")
     status = Column(String(16), nullable=False, default="pending", index=True)
+    resubmit_count = Column(Integer, nullable=False, default=0)
     created_by_name = Column(String(32), nullable=False, default="家长")
     child_reply = Column(Text, nullable=False, default="")
     created_at = Column(DateTime, server_default=func.now(), index=True)

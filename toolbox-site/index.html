@@ -366,17 +366,20 @@
     }
     .image-viewer-stage {
       overflow: auto;
-      display: grid;
-      place-items: center;
+      display: block;
       min-height: 0;
+      text-align: center;
+      overscroll-behavior: contain;
+      touch-action: none;
     }
     .image-viewer-stage img {
+      display: block;
+      margin: 0 auto;
       max-width: 96%;
       max-height: 82dvh;
       object-fit: contain;
       border-radius: 12px;
-      transform-origin: center center;
-      transition: transform .16s ease;
+      transition: width .16s ease, max-width .16s ease, max-height .16s ease;
     }
     .task-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
     .task-status { font-weight: 700; }
@@ -698,6 +701,9 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="imageViewer" class="image-viewer">
     <div class="image-viewer-bar">
+      <button type="button" onclick="zoomImageViewer(-0.5, event)">缩小</button>
+      <button type="button" onclick="zoomImageViewer(0.5, event)">放大</button>
+      <button type="button" onclick="resetImageViewerZoom()">复位</button>
       <button type="button" onclick="closeImageViewer()">关闭</button>
     </div>
     <div class="image-viewer-stage" onclick="closeImageViewer()">
@@ -717,6 +723,9 @@
     let chatLastId = 0;
     let toastTimer = null;
     let selectedChatFile = null;
+    let imageViewerScale = 1;
+    let imageViewerPinchStart = null;
+    const imageViewerPointers = new Map();
 
     document.body.classList.toggle('toolbox-app', isToolboxApp);
     document.body.classList.add('home-active');
@@ -1014,13 +1023,14 @@
 
     function renderTaskItem(item, role, names) {
       const statusNames = { pending: '待孩子处理', accepted: '已接受', returned: '已退回', done: '已完成' };
+      const resendText = item.resubmit_count ? ' · 重发 ' + item.resubmit_count + ' 次' : '';
       const actions = role === 'child'
         ? childTaskActions(item)
         : parentTaskActions(item);
       return '<article class="item todo-card ' + (item.status === 'done' ? 'done' : '') + '">' +
         '<div>' +
         '<h3>' + escapeHtml(item.title) + '</h3>' +
-        '<p class="meta">' + escapeHtml(names[item.granularity] || item.granularity) + ' · <span class="task-status ' + escapeAttr(item.status) + '">' + escapeHtml(statusNames[item.status] || item.status) + '</span> · ' + escapeHtml(formatTime(item.updated_at || item.created_at)) + '</p>' +
+        '<p class="meta">' + escapeHtml(names[item.granularity] || item.granularity) + ' · <span class="task-status ' + escapeAttr(item.status) + '">' + escapeHtml(statusNames[item.status] || item.status) + '</span>' + escapeHtml(resendText) + ' · ' + escapeHtml(formatTime(item.updated_at || item.created_at)) + '</p>' +
         (item.description ? '<p>' + escapeHtml(item.description) + '</p>' : '') +
         (item.child_reply ? '<p class="meta">退回原因：' + escapeHtml(item.child_reply) + '</p>' : '') +
         '</div>' +
@@ -1041,6 +1051,10 @@
 
     function parentTaskActions(item) {
       if (item.status === 'done') return '<span class="tag green">完成</span>';
+      if (item.status === 'returned') {
+        return '<button type="button" onclick="updateRemoteTask(' + item.id + ', &quot;pending&quot;)">重发</button>' +
+          '<button class="secondary" type="button" onclick="loadRemoteTasks()">刷新</button>';
+      }
       return '<button class="secondary" type="button" onclick="loadRemoteTasks()">刷新</button>';
     }
 
@@ -1176,10 +1190,19 @@
     function openImageViewer(url) {
       const viewer = document.getElementById('imageViewer');
       const image = document.getElementById('imageViewerImg');
+      const stage = document.querySelector('.image-viewer-stage');
       image.src = url;
       image.alt = '图片预览';
       viewer.classList.add('active');
       document.body.style.overflow = 'hidden';
+      imageViewerScale = 1;
+      imageViewerPointers.clear();
+      imageViewerPinchStart = null;
+      applyImageViewerZoom();
+      requestAnimationFrame(() => {
+        stage.scrollLeft = 0;
+        stage.scrollTop = 0;
+      });
     }
 
     function closeImageViewer() {
@@ -1187,6 +1210,79 @@
       viewer.classList.remove('active');
       document.getElementById('imageViewerImg').removeAttribute('src');
       document.body.style.overflow = '';
+    }
+
+    function zoomImageViewer(delta, event) {
+      if (event) event.stopPropagation();
+      imageViewerScale = clampImageViewerScale(imageViewerScale + delta);
+      applyImageViewerZoom();
+    }
+
+    function resetImageViewerZoom() {
+      imageViewerScale = 1;
+      applyImageViewerZoom();
+    }
+
+    function clampImageViewerScale(value) {
+      return Math.min(6, Math.max(0.5, value));
+    }
+
+    function applyImageViewerZoom() {
+      const image = document.getElementById('imageViewerImg');
+      if (imageViewerScale === 1) {
+        image.style.width = '';
+        image.style.maxWidth = '96%';
+        image.style.maxHeight = '82dvh';
+      } else {
+        image.style.width = (imageViewerScale * 100) + '%';
+        image.style.maxWidth = 'none';
+        image.style.maxHeight = 'none';
+      }
+    }
+
+    function installImageViewerGestures() {
+      const stage = document.querySelector('.image-viewer-stage');
+      const distance = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      stage.addEventListener('wheel', event => {
+        event.preventDefault();
+        zoomImageViewer(event.deltaY < 0 ? 0.35 : -0.35, event);
+      }, { passive: false });
+      stage.addEventListener('dblclick', event => {
+        event.preventDefault();
+        imageViewerScale = imageViewerScale > 1 ? 1 : 2.5;
+        applyImageViewerZoom();
+      });
+      stage.addEventListener('pointerdown', event => {
+        imageViewerPointers.set(event.pointerId, event);
+        stage.setPointerCapture(event.pointerId);
+        if (imageViewerPointers.size === 2) {
+          const points = [...imageViewerPointers.values()];
+          imageViewerPinchStart = { distance: distance(points[0], points[1]), scale: imageViewerScale };
+        }
+      });
+      stage.addEventListener('pointermove', event => {
+        if (!imageViewerPointers.has(event.pointerId)) return;
+        const previous = imageViewerPointers.get(event.pointerId);
+        imageViewerPointers.set(event.pointerId, event);
+        if (imageViewerPointers.size === 1 && imageViewerScale > 1 && previous) {
+          event.preventDefault();
+          stage.scrollLeft -= event.clientX - previous.clientX;
+          stage.scrollTop -= event.clientY - previous.clientY;
+          return;
+        }
+        if (imageViewerPointers.size !== 2 || !imageViewerPinchStart) return;
+        event.preventDefault();
+        const points = [...imageViewerPointers.values()];
+        const ratio = distance(points[0], points[1]) / imageViewerPinchStart.distance;
+        imageViewerScale = clampImageViewerScale(imageViewerPinchStart.scale * ratio);
+        applyImageViewerZoom();
+      });
+      const clearPointer = event => {
+        imageViewerPointers.delete(event.pointerId);
+        if (imageViewerPointers.size < 2) imageViewerPinchStart = null;
+      };
+      stage.addEventListener('pointerup', clearPointer);
+      stage.addEventListener('pointercancel', clearPointer);
     }
 
     function formatFileSize(size) {
@@ -1267,6 +1363,7 @@
     updateStats();
     applyChatSettings();
     installRunnerDrag();
+    installImageViewerGestures();
     setInterval(() => {
       if (document.getElementById('chatPanel').classList.contains('active')) {
         loadChatMessages(false);

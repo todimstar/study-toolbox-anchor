@@ -41,3 +41,12 @@ async def init_db() -> None:
             for column, statement in migrations.items():
                 if column not in existing:
                     await conn.execute(text(statement))
+        task_columns = await conn.execute(text("PRAGMA table_info(study_tasks)"))
+        existing_task_columns = {row[1] for row in task_columns.fetchall()}
+        if existing_task_columns:
+            task_migrations = {
+                "resubmit_count": "ALTER TABLE study_tasks ADD COLUMN resubmit_count INTEGER NOT NULL DEFAULT 0",
+            }
+            for column, statement in task_migrations.items():
+                if column not in existing_task_columns:
+                    await conn.execute(text(statement))

@@ -6,10 +6,10 @@ dist/
 *.db
 server/venv/
 server/.env
+server/uploads/
 
 # Node
-web/node_modules/
-web/dist/
+node_modules/
 
 # Android
 android/.gradle/
@@ -24,11 +24,8 @@ android/local.properties
 .idea/
 .vscode/
 *.iml
+.omx/
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Uploads
-server/uploads/*
-!server/uploads/.gitkeep

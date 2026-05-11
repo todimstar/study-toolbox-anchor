@@ -36,6 +36,7 @@ class TaskOut(BaseModel):
     description: str
     granularity: str
     status: str
+    resubmit_count: int
     created_by_name: str
     child_reply: str
     created_at: str
@@ -67,6 +68,7 @@ def _out(task: StudyTask) -> TaskOut:
         description=task.description,
         granularity=task.granularity,
         status=task.status,
+        resubmit_count=task.resubmit_count or 0,
         created_by_name=task.created_by_name,
         child_reply=task.child_reply,
         created_at=_iso(task.created_at),
@@ -98,6 +100,7 @@ async def create_task(
         description=body.description.strip(),
         granularity=body.granularity,
         status="pending",
+        resubmit_count=0,
         created_by_name=body.created_by_name.strip(),
         child_reply="",
         created_at=now,
@@ -128,6 +131,8 @@ async def update_task(
     if role == "parent" and body.status not in {"pending", "done"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid parent status")
 
+    if role == "parent" and body.status == "pending" and task.status == "returned":
+        task.resubmit_count = (task.resubmit_count or 0) + 1
     task.status = body.status
     if body.status != "pending":
         task.child_reply = body.child_reply.strip()
