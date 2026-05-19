@@ -8,7 +8,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -113,14 +113,20 @@ async def list_messages(
     limit: int = Query(80, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):
-    query = (
-        select(MicroChatMessage)
-        .where(MicroChatMessage.id > since_id)
-        .order_by(MicroChatMessage.id.asc())
-        .limit(limit)
-    )
+    if since_id:
+        query = (
+            select(MicroChatMessage)
+            .where(MicroChatMessage.id > since_id)
+            .order_by(MicroChatMessage.id.asc())
+            .limit(limit)
+        )
+    else:
+        query = select(MicroChatMessage).order_by(desc(MicroChatMessage.id)).limit(limit)
     result = await db.execute(query)
-    return MessageListResponse(items=[_message_out(message) for message in result.scalars().all()])
+    messages = result.scalars().all()
+    if not since_id:
+        messages = sorted(messages, key=lambda message: message.id)
+    return MessageListResponse(items=[_message_out(message) for message in messages])
 
 
 @router.post("/messages", response_model=MessageOut, status_code=status.HTTP_201_CREATED)

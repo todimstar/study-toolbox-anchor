@@ -105,6 +105,18 @@ curl -X PATCH "http://127.0.0.1:8000/api/tasks/1?role=child" \
   -d '{"status":"accepted","child_reply":""}'
 ```
 
+远程 HTML 投递接口：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/remote-html \
+  -H "Content-Type: application/json" \
+  -H "X-Remote-Key: <PARENT_CHAT_KEY>" \
+  -d '{"title":"互动教程","description":"点开全屏运行","html":"<h1>Hello</h1>","created_by_name":"高人"}'
+
+curl "http://127.0.0.1:8000/api/remote-html?role=child" \
+  -H "X-Remote-Key: <CHILD_CHAT_KEY>"
+```
+
 图片/文件消息测试：
 
 ```bash
@@ -210,6 +222,10 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 1. FastAPI 是否运行。
 2. Nginx 是否配置 `/api/` 反向代理。
 3. `https://toolbox.zakuku.top/api/micro-chat/messages` 是否能返回 JSON。
+
+### 微聊新消息像是丢失
+
+检查 `/api/micro-chat/messages` 的首次加载逻辑是否取“最新一页”。当消息总数超过默认分页上限时，如果服务端按 `id asc limit 80` 返回，会只看到最早 80 条，新消息要等多次轮询才出现，看起来像丢失。当前实现：`since_id=0` 返回最新 80 条并按升序展示；`since_id>0` 才返回增量。
 
 ### 家长端发送失败
 

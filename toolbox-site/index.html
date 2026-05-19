@@ -161,6 +161,7 @@
       box-shadow: var(--shadow-soft); overflow: hidden;
     }
     .tool-card {
+      position: relative;
       grid-column: span 6; padding: 20px; text-align: left;
       display: grid; gap: 12px; border: none; cursor: pointer; transition: transform .2s;
     }
@@ -395,6 +396,7 @@
       border-top: 1px solid rgba(0,0,0,0.1);
     }
     .nav-btn {
+      position: relative;
       min-height: 48px; padding: 4px 12px; background: transparent;
       color: var(--muted); border: 0; font-size: 10px; font-weight: 500;
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
@@ -408,6 +410,22 @@
       -webkit-mask-size: cover;
     }
     .nav-btn.active { color: var(--brand); }
+    .badge-dot {
+      position: absolute;
+      top: 8px;
+      right: 18px;
+      min-width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--danger);
+      box-shadow: 0 0 0 2px #fff;
+      opacity: 0;
+      transform: scale(.5);
+      transition: opacity .18s ease, transform .18s ease;
+      pointer-events: none;
+    }
+    .badge-dot.show { opacity: 1; transform: scale(1); }
+    .tool-card .badge-dot { top: 16px; right: 16px; }
 
     .runner { position: fixed; inset: 0; z-index: 100; display: none; background: #000; }
     .runner.active { display: block; }
@@ -498,6 +516,7 @@
             </span>
           </button>
           <button class="tool-card" type="button" onclick="showPanel('chatPanel')">
+            <span id="chatCardBadge" class="badge-dot" aria-label="有新微聊"></span>
             <span class="tool-card-top"><span class="tag">CHAT</span><span class="tag green">跨设备</span></span>
             <span>
               <h3>微聊留言</h3>
@@ -662,19 +681,38 @@
         <div class="panel-head">
           <div>
             <h2 id="remoteTitleText">学习收件箱</h2>
-            <p>收到的学习材料会放在这里。</p>
+            <p id="remotePanelHint">收到的学习材料会放在这里。</p>
           </div>
           <button class="secondary" type="button" onclick="showPanel('home')">返回首页</button>
         </div>
         <div class="grid">
-          <article class="card remote-card full">
+          <section id="parentRemoteHtmlBox" class="card form-card parent-browser-only">
+            <label>
+              投递 HTML
+              <input id="remoteHtmlTitle" placeholder="例如：英语小游戏 / 几何互动教程" autocomplete="off" />
+            </label>
+            <label>
+              说明
+              <textarea id="remoteHtmlDescription" placeholder="可选：告诉 queen 这个小网页怎么用。"></textarea>
+            </label>
+            <label>
+              HTML 内容
+              <textarea id="remoteHtmlCode" spellcheck="false" placeholder="粘贴完整 HTML。它会出现在学习收件箱里，可直接全屏运行。"></textarea>
+            </label>
+            <div class="action-row">
+              <button type="button" onclick="createRemoteHtml()">投递 HTML</button>
+              <button class="secondary" type="button" onclick="loadRemoteHtml()">刷新收件箱</button>
+            </div>
+          </section>
+          <article class="card preview-card">
             <div class="item-title-row">
               <div>
-                <h3>暂时没有新内容</h3>
-                <p>有新的网页、任务或材料时，会出现在这里。</p>
+                <h3 id="remoteHtmlListTitle">远程 HTML</h3>
+                <p class="helper" id="remoteHtmlListHelper">高人投递的小网页会在这里。</p>
               </div>
-              <span class="tag">空</span>
+              <span class="tag" id="remoteHtmlCountTag">0 个</span>
             </div>
+            <div id="remoteHtmlList" class="item-list"></div>
           </article>
         </div>
       </section>
@@ -684,7 +722,7 @@
   <nav class="bottom-nav" aria-label="主导航">
     <button id="nav-home" class="nav-btn active" type="button" onclick="showPanel('home')">首页</button>
     <button id="nav-htmlPanel" class="nav-btn" type="button" onclick="showPanel('htmlPanel')">HTML</button>
-    <button id="nav-chatPanel" class="nav-btn" type="button" onclick="showPanel('chatPanel')">微聊</button>
+    <button id="nav-chatPanel" class="nav-btn" type="button" onclick="showPanel('chatPanel')">微聊<span id="chatNavBadge" class="badge-dot" aria-label="有新微聊"></span></button>
     <button id="nav-todoPanel" class="nav-btn" type="button" onclick="showPanel('todoPanel')">任务</button>
     <button id="nav-remotePanel" class="nav-btn" type="button" onclick="showPanel('remotePanel')">投递</button>
   </nav>
@@ -714,8 +752,10 @@
   <script>
     const htmlKey = 'study_toolbox_html_records_v1';
     const chatSettingsKey = 'study_toolbox_chat_settings_v1';
+    const chatSeenKey = 'study_toolbox_chat_seen_v1';
     const chatApi = '/api/micro-chat/messages';
     const taskApi = '/api/tasks';
+    const remoteHtmlApi = '/api/remote-html';
     const childChatKey = 'child-chat-key-change-me';
     const panelIds = ['home', 'htmlPanel', 'todoPanel', 'chatPanel', 'remotePanel'];
     const isToolboxApp = !!(window.StudyToolbox && StudyToolbox.getAppVersion);
@@ -725,6 +765,7 @@
     let selectedChatFile = null;
     let imageViewerScale = 1;
     let imageViewerPinchStart = null;
+    let unreadChatCount = 0;
     const imageViewerPointers = new Map();
 
     document.body.classList.toggle('toolbox-app', isToolboxApp);
@@ -742,6 +783,7 @@
       updateStats();
       if (id === 'chatPanel') loadChatMessages(true);
       if (id === 'todoPanel') loadRemoteTasks();
+      if (id === 'remotePanel') loadRemoteHtml();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -956,6 +998,10 @@
       return settings.role === 'parent' ? settings.parentKey : childChatKey;
     }
 
+    function remoteKey(settings) {
+      return taskKey(settings);
+    }
+
     async function createRemoteTask() {
       saveChatSettings();
       const settings = chatSettings();
@@ -1058,14 +1104,134 @@
       return '<button class="secondary" type="button" onclick="loadRemoteTasks()">刷新</button>';
     }
 
+    async function createRemoteHtml() {
+      saveChatSettings();
+      const settings = chatSettings();
+      const key = remoteKey(settings);
+      if (!key) return toast('请先填写口令');
+      const title = document.getElementById('remoteHtmlTitle').value.trim();
+      const html = document.getElementById('remoteHtmlCode').value.trim();
+      if (!title) return toast('先写 HTML 标题');
+      if (!html) return toast('先粘贴 HTML 内容');
+      const res = await fetch(remoteHtmlApi, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Remote-Key': key },
+        body: JSON.stringify({
+          title,
+          description: document.getElementById('remoteHtmlDescription').value.trim(),
+          html,
+          created_by_name: settings.name
+        })
+      });
+      if (!res.ok) return toast('投递失败，稍后再试');
+      document.getElementById('remoteHtmlTitle').value = '';
+      document.getElementById('remoteHtmlDescription').value = '';
+      document.getElementById('remoteHtmlCode').value = '';
+      await loadRemoteHtml();
+      toast('HTML 已投递');
+    }
+
+    async function loadRemoteHtml() {
+      const settings = chatSettings();
+      const key = remoteKey(settings);
+      const list = document.getElementById('remoteHtmlList');
+      document.getElementById('remotePanelHint').textContent = settings.role === 'parent'
+        ? '把 HTML 投递到 queen 的学习收件箱。'
+        : '高人投递的小网页会放在这里。';
+      document.getElementById('remoteHtmlListTitle').textContent = settings.role === 'parent' ? '已投递 HTML' : '收到的 HTML';
+      document.getElementById('remoteHtmlListHelper').textContent = settings.role === 'parent'
+        ? '这里会显示最近投递的小网页。'
+        : '点开即可全屏运行，也可以保存到本地记录。';
+      if (!key) {
+        list.innerHTML = '<div class="empty-state">请先在微聊里填写口令。</div>';
+        return;
+      }
+      try {
+        const res = await fetch(remoteHtmlApi + '?role=' + settings.role, { headers: { 'X-Remote-Key': key }, cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const all = data.items || [];
+        document.getElementById('remoteHtmlCountTag').textContent = all.length + ' 个';
+        list.innerHTML = all.length ? all.map(renderRemoteHtmlItem).join('') :
+          '<div class="empty-state">' + (settings.role === 'parent' ? '还没有投递 HTML。' : '暂时没有收到 HTML。') + '</div>';
+      } catch (error) {
+        list.innerHTML = '<div class="empty-state">暂时连不上学习收件箱，稍后再试。</div>';
+      }
+    }
+
+    function renderRemoteHtmlItem(item) {
+      return '<article class="item">' +
+        '<div class="item-title-row">' +
+        '<div><h3>' + escapeHtml(item.title) + '</h3><p class="meta">' + escapeHtml(item.created_by_name) + ' · ' + escapeHtml(formatTime(item.created_at)) + ' · ' + formatBytes(item.html) + '</p></div>' +
+        '<span class="tag blue">远程</span>' +
+        '</div>' +
+        (item.description ? '<p>' + escapeHtml(item.description) + '</p>' : '') +
+        '<div class="item-actions">' +
+        '<button type="button" onclick="runRemoteHtml(' + item.id + ')">全屏运行</button>' +
+        '<button class="secondary" type="button" onclick="saveRemoteHtml(' + item.id + ')">保存到本地</button>' +
+        '</div>' +
+        '</article>';
+    }
+
+    async function remoteHtmlItems() {
+      const settings = chatSettings();
+      const key = remoteKey(settings);
+      if (!key) return [];
+      const res = await fetch(remoteHtmlApi + '?role=' + settings.role, { headers: { 'X-Remote-Key': key }, cache: 'no-store' });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.items || [];
+    }
+
+    async function runRemoteHtml(id) {
+      const item = (await remoteHtmlItems()).find(record => record.id === id);
+      if (item) setRunner(item.html);
+    }
+
+    async function saveRemoteHtml(id) {
+      const item = (await remoteHtmlItems()).find(record => record.id === id);
+      if (!item) return toast('没有找到这个 HTML');
+      const all = read(htmlKey);
+      all.unshift({
+        id: 'remote-' + item.id + '-' + Date.now().toString(36),
+        title: item.title,
+        html: item.html,
+        source: '远程投递',
+        updatedAt: new Date().toLocaleString()
+      });
+      write(htmlKey, all);
+      renderHtmlList();
+      updateStats();
+      toast('已保存到本地 HTML');
+    }
+
+    function markChatSeen(id) {
+      if (!id) return;
+      write(chatSeenKey, [{ id }]);
+    }
+
+    function lastSeenChatId() {
+      return Number((read(chatSeenKey)[0] || {}).id || 0);
+    }
+
+    function updateChatBadges() {
+      const show = unreadChatCount > 0;
+      document.getElementById('chatNavBadge').classList.toggle('show', show);
+      document.getElementById('chatCardBadge').classList.toggle('show', show);
+    }
+
     async function loadChatMessages(force = false) {
       const status = document.getElementById('chatStatus');
       try {
+        if (force) chatLastId = 0;
         const url = force ? chatApi : chatApi + '?since_id=' + chatLastId;
         const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         const settings = chatSettings();
+        const lastSeen = lastSeenChatId();
+        const chatActive = document.getElementById('chatPanel').classList.contains('active');
+        let newUnread = 0;
         const existing = force ? [] : Array.from(document.querySelectorAll('[data-chat-id]')).map(node => Number(node.dataset.chatId));
         const list = document.getElementById('chatList');
         if (force) list.innerHTML = '';
@@ -1074,6 +1240,7 @@
           if (existing.includes(item.id)) continue;
           chatLastId = Math.max(chatLastId, item.id);
           const side = item.sender_role === settings.role ? 'self' : 'other';
+          if (!chatActive && item.sender_role !== settings.role && item.id > lastSeen) newUnread += 1;
           list.insertAdjacentHTML('beforeend',
             '<div class="chat-message ' + side + '" data-chat-id="' + item.id + '">' +
             '<span class="chat-meta">' + escapeHtml(item.sender_name) + ' · ' + escapeHtml(formatTime(item.created_at)) + '</span>' +
@@ -1084,6 +1251,13 @@
             '</div>'
           );
         }
+        if (chatActive) {
+          unreadChatCount = 0;
+          markChatSeen(chatLastId);
+        } else {
+          unreadChatCount += newUnread;
+        }
+        updateChatBadges();
         if (!list.children.length) {
           list.innerHTML = '<div class="empty-state">还没有留言。写第一句吧。</div>';
         }
@@ -1360,15 +1534,12 @@
 
     renderHtmlList();
     loadRemoteTasks();
+    loadRemoteHtml();
     updateStats();
     applyChatSettings();
     installRunnerDrag();
     installImageViewerGestures();
-    setInterval(() => {
-      if (document.getElementById('chatPanel').classList.contains('active')) {
-        loadChatMessages(false);
-      }
-    }, 3000);
+    setInterval(() => loadChatMessages(false), 3000);
   </script>
 </body>
 </html>

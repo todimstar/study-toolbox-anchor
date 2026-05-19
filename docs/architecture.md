@@ -12,12 +12,14 @@ toolbox-site/index.html
   -> 家长端：普通浏览器默认识别
   -> 移动端优先的单页工具箱 UI
   -> /api/micro-chat/messages
+  -> /api/remote-html
   -> /api/tasks
 
 server/app
   -> FastAPI
   -> SQLite
   -> micro_chat_messages
+  -> remote_html_deliveries
   -> study_tasks
 ```
 
@@ -80,10 +82,24 @@ Android 包名是 `com.studytoolbox.anchor`。它只做稳定的受控 WebView �
 - `created_at`
 - `updated_at`
 
+## 远程 HTML 投递数据模型
+
+表：`remote_html_deliveries`
+
+字段：
+
+- `id`
+- `title`
+- `description`
+- `html`
+- `created_by_name`
+- `created_at`
+
 ## 设计取舍
 
 - 当前优先纯网页升级，因为平板已离开且不能重装 APK。
 - 工具箱页面优先移动端和平板触控体验：底部导航、48px 触控目标、toast 反馈、全屏 HTML 运行器。
 - 当前微聊使用 3 秒轮询，足够 MVP；后续可升级 SSE 或 WebSocket。
+- 微聊首次加载必须取最新一页消息，而不是最早一页；否则消息超过默认分页上限后，新消息会看起来“丢失”。
 - 孩子端发送密钥目前在前端内置，适合家庭内轻量使用；后续拿到平板后应升级为 App 注入设备密钥。
 - 任务投递当前复用微聊口令体系，先保证平板离手后的远程可升级性；后续再拆出正式账号和设备绑定。
