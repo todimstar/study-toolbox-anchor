@@ -766,6 +766,7 @@
     let imageViewerScale = 1;
     let imageViewerPinchStart = null;
     let unreadChatCount = 0;
+    let lastNotifiedChatId = Number(localStorage.getItem('study_toolbox_last_notified_chat_id') || 0);
     const imageViewerPointers = new Map();
 
     document.body.classList.toggle('toolbox-app', isToolboxApp);
@@ -1220,6 +1221,16 @@
       document.getElementById('chatCardBadge').classList.toggle('show', show);
     }
 
+    function notifyIncomingChat(newCount, latestItem) {
+      if (!isToolboxApp || !latestItem || latestItem.id <= lastNotifiedChatId) return;
+      if (!(window.StudyToolbox && StudyToolbox.showNotification)) return;
+      const title = newCount > 1 ? '微聊有 ' + newCount + ' 条新消息' : '微聊有新消息';
+      const message = latestItem.sender_name + '：' + (latestItem.body || latestItem.attachment_name || '发来一个附件');
+      StudyToolbox.showNotification(title, message.slice(0, 120));
+      lastNotifiedChatId = latestItem.id;
+      localStorage.setItem('study_toolbox_last_notified_chat_id', String(lastNotifiedChatId));
+    }
+
     async function loadChatMessages(force = false) {
       const status = document.getElementById('chatStatus');
       try {
@@ -1232,6 +1243,7 @@
         const lastSeen = lastSeenChatId();
         const chatActive = document.getElementById('chatPanel').classList.contains('active');
         let newUnread = 0;
+        let latestUnread = null;
         const existing = force ? [] : Array.from(document.querySelectorAll('[data-chat-id]')).map(node => Number(node.dataset.chatId));
         const list = document.getElementById('chatList');
         if (force) list.innerHTML = '';
@@ -1240,7 +1252,10 @@
           if (existing.includes(item.id)) continue;
           chatLastId = Math.max(chatLastId, item.id);
           const side = item.sender_role === settings.role ? 'self' : 'other';
-          if (!chatActive && item.sender_role !== settings.role && item.id > lastSeen) newUnread += 1;
+          if (!chatActive && item.sender_role !== settings.role && item.id > lastSeen) {
+            newUnread += 1;
+            latestUnread = item;
+          }
           list.insertAdjacentHTML('beforeend',
             '<div class="chat-message ' + side + '" data-chat-id="' + item.id + '">' +
             '<span class="chat-meta">' + escapeHtml(item.sender_name) + ' · ' + escapeHtml(formatTime(item.created_at)) + '</span>' +
@@ -1256,6 +1271,7 @@
           markChatSeen(chatLastId);
         } else {
           unreadChatCount += newUnread;
+          notifyIncomingChat(newUnread, latestUnread);
         }
         updateChatBadges();
         if (!list.children.length) {
