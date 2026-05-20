@@ -110,10 +110,18 @@ def _build_message(body: CreateMessageRequest) -> MicroChatMessage:
 @router.get("/messages", response_model=MessageListResponse)
 async def list_messages(
     since_id: int = Query(0, ge=0),
+    before_id: int = Query(0, ge=0),
     limit: int = Query(80, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):
-    if since_id:
+    if before_id:
+        query = (
+            select(MicroChatMessage)
+            .where(MicroChatMessage.id < before_id)
+            .order_by(desc(MicroChatMessage.id))
+            .limit(limit)
+        )
+    elif since_id:
         query = (
             select(MicroChatMessage)
             .where(MicroChatMessage.id > since_id)
@@ -124,7 +132,7 @@ async def list_messages(
         query = select(MicroChatMessage).order_by(desc(MicroChatMessage.id)).limit(limit)
     result = await db.execute(query)
     messages = result.scalars().all()
-    if not since_id:
+    if before_id or not since_id:
         messages = sorted(messages, key=lambda message: message.id)
     return MessageListResponse(items=[_message_out(message) for message in messages])
 

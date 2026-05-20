@@ -208,7 +208,7 @@
 
     .chat-shell {
       height: min(78dvh, 780px); min-height: 560px;
-      display: grid; grid-template-rows: auto auto 1fr auto;
+      display: grid; grid-template-rows: auto auto auto 1fr auto;
       overflow: hidden; padding: 0; background: var(--surface-solid);
       border-radius: var(--radius-xl); box-shadow: var(--shadow);
     }
@@ -346,6 +346,14 @@
     }
     .settings-toggle::-webkit-details-marker { display: none; }
     .chat-settings[open] .settings-toggle { margin-bottom: 12px; }
+    .chat-history-button {
+      justify-self: center;
+      min-height: 34px;
+      margin: 8px 0 0;
+      padding: 6px 12px;
+      font-size: 13px;
+      border-radius: 999px;
+    }
     .image-viewer {
       position: fixed;
       inset: 0;
@@ -662,6 +670,7 @@
               </label>
             </div>
           </details>
+          <button id="loadOlderChatButton" class="secondary chat-history-button hidden" type="button" onclick="loadOlderChatMessages()">加载更早消息</button>
           <div id="chatList" class="chat-list" aria-live="polite"></div>
           <div class="chat-composer">
             <div id="attachmentPreview" class="attachment-preview">
@@ -761,6 +770,8 @@
     const isToolboxApp = !!(window.StudyToolbox && StudyToolbox.getAppVersion);
     let htmlDraft = '';
     let chatLastId = 0;
+    let chatOldestId = 0;
+    let chatHasOlder = true;
     let toastTimer = null;
     let selectedChatFile = null;
     let imageViewerScale = 1;
@@ -1244,10 +1255,34 @@
       localStorage.setItem('study_toolbox_last_notified_chat_id', String(lastNotifiedChatId));
     }
 
+    function updateOlderChatButton() {
+      document.getElementById('loadOlderChatButton').classList.toggle('hidden', !chatHasOlder || !chatOldestId);
+    }
+
+    function renderChatMessage(item, settings) {
+      const side = item.sender_role === settings.role ? 'self' : 'other';
+      return '<div class="chat-message ' + side + '" data-chat-id="' + item.id + '">' +
+        '<span class="chat-meta">' + escapeHtml(item.sender_name) + ' · ' + escapeHtml(formatTime(item.created_at)) + '</span>' +
+        '<div class="message-row">' +
+        '<div class="message-avatar">' + renderAvatarHtml(item.sender_avatar, item.sender_name) + '</div>' +
+        '<div class="chat-bubble">' + renderMessageContent(item) + '</div>' +
+        '</div>' +
+        '</div>';
+    }
+
+    function trackChatWindow(item) {
+      chatLastId = Math.max(chatLastId, item.id);
+      chatOldestId = chatOldestId ? Math.min(chatOldestId, item.id) : item.id;
+    }
+
     async function loadChatMessages(force = false) {
       const status = document.getElementById('chatStatus');
       try {
-        if (force) chatLastId = 0;
+        if (force) {
+          chatLastId = 0;
+          chatOldestId = 0;
+          chatHasOlder = true;
+        }
         const url = force ? chatApi : chatApi + '?since_id=' + chatLastId;
         const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -1264,22 +1299,15 @@
         if (list.querySelector('.empty-state')) list.innerHTML = '';
         for (const item of data.items || []) {
           if (existing.includes(item.id)) continue;
-          chatLastId = Math.max(chatLastId, item.id);
-          const side = item.sender_role === settings.role ? 'self' : 'other';
+          trackChatWindow(item);
           if ((!chatActive || !shouldStickToBottom) && item.sender_role !== settings.role && item.id > lastSeen) {
             newUnread += 1;
             latestUnread = item;
           }
-          list.insertAdjacentHTML('beforeend',
-            '<div class="chat-message ' + side + '" data-chat-id="' + item.id + '">' +
-            '<span class="chat-meta">' + escapeHtml(item.sender_name) + ' · ' + escapeHtml(formatTime(item.created_at)) + '</span>' +
-            '<div class="message-row">' +
-            '<div class="message-avatar">' + renderAvatarHtml(item.sender_avatar, item.sender_name) + '</div>' +
-            '<div class="chat-bubble">' + renderMessageContent(item) + '</div>' +
-            '</div>' +
-            '</div>'
-          );
+          list.insertAdjacentHTML('beforeend', renderChatMessage(item, settings));
         }
+        chatHasOlder = !!chatOldestId && chatOldestId > 1;
+        updateOlderChatButton();
         if (chatActive && shouldStickToBottom) {
           unreadChatCount = 0;
           markChatSeen(chatLastId);
@@ -1295,6 +1323,36 @@
         status.textContent = '已同步';
       } catch (error) {
         status.textContent = '暂时连不上，稍后再试';
+      }
+    }
+
+    async function loadOlderChatMessages() {
+      if (!chatOldestId || !chatHasOlder) return;
+      const button = document.getElementById('loadOlderChatButton');
+      const list = document.getElementById('chatList');
+      const beforeHeight = list.scrollHeight;
+      const beforeTop = list.scrollTop;
+      button.disabled = true;
+      try {
+        const res = await fetch(chatApi + '?before_id=' + chatOldestId, { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const settings = chatSettings();
+        const items = data.items || [];
+        const existing = Array.from(document.querySelectorAll('[data-chat-id]')).map(node => Number(node.dataset.chatId));
+        for (const item of items) {
+          if (existing.includes(item.id)) continue;
+          trackChatWindow(item);
+          list.insertAdjacentHTML('afterbegin', renderChatMessage(item, settings));
+        }
+        chatHasOlder = items.length > 0 && chatOldestId > 1;
+        updateOlderChatButton();
+        list.scrollTop = list.scrollHeight - beforeHeight + beforeTop;
+        if (!items.length) toast('没有更早的消息了');
+      } catch (error) {
+        toast('加载更早消息失败，稍后再试');
+      } finally {
+        button.disabled = false;
       }
     }
 
