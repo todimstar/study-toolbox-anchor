@@ -1221,6 +1221,19 @@
       document.getElementById('chatCardBadge').classList.toggle('show', show);
     }
 
+    function isChatNearBottom(list) {
+      return list.scrollHeight - list.scrollTop - list.clientHeight < 120;
+    }
+
+    function markChatReadIfAtBottom() {
+      const list = document.getElementById('chatList');
+      if (!document.getElementById('chatPanel').classList.contains('active')) return;
+      if (!isChatNearBottom(list)) return;
+      unreadChatCount = 0;
+      markChatSeen(chatLastId);
+      updateChatBadges();
+    }
+
     function notifyIncomingChat(newCount, latestItem) {
       if (!isToolboxApp || !latestItem || latestItem.id <= lastNotifiedChatId) return;
       if (!(window.StudyToolbox && StudyToolbox.showNotification)) return;
@@ -1244,15 +1257,16 @@
         const chatActive = document.getElementById('chatPanel').classList.contains('active');
         let newUnread = 0;
         let latestUnread = null;
-        const existing = force ? [] : Array.from(document.querySelectorAll('[data-chat-id]')).map(node => Number(node.dataset.chatId));
         const list = document.getElementById('chatList');
+        const shouldStickToBottom = force || isChatNearBottom(list);
+        const existing = force ? [] : Array.from(document.querySelectorAll('[data-chat-id]')).map(node => Number(node.dataset.chatId));
         if (force) list.innerHTML = '';
         if (list.querySelector('.empty-state')) list.innerHTML = '';
         for (const item of data.items || []) {
           if (existing.includes(item.id)) continue;
           chatLastId = Math.max(chatLastId, item.id);
           const side = item.sender_role === settings.role ? 'self' : 'other';
-          if (!chatActive && item.sender_role !== settings.role && item.id > lastSeen) {
+          if ((!chatActive || !shouldStickToBottom) && item.sender_role !== settings.role && item.id > lastSeen) {
             newUnread += 1;
             latestUnread = item;
           }
@@ -1266,18 +1280,18 @@
             '</div>'
           );
         }
-        if (chatActive) {
+        if (chatActive && shouldStickToBottom) {
           unreadChatCount = 0;
           markChatSeen(chatLastId);
         } else {
           unreadChatCount += newUnread;
-          notifyIncomingChat(newUnread, latestUnread);
+          if (!chatActive) notifyIncomingChat(newUnread, latestUnread);
         }
         updateChatBadges();
         if (!list.children.length) {
           list.innerHTML = '<div class="empty-state">还没有留言。写第一句吧。</div>';
         }
-        list.scrollTop = list.scrollHeight;
+        if (shouldStickToBottom) list.scrollTop = list.scrollHeight;
         status.textContent = '已同步';
       } catch (error) {
         status.textContent = '暂时连不上，稍后再试';
@@ -1547,6 +1561,7 @@
         sendChatMessage();
       }
     });
+    document.getElementById('chatList').addEventListener('scroll', markChatReadIfAtBottom);
 
     renderHtmlList();
     loadRemoteTasks();
