@@ -66,6 +66,16 @@ class MainActivity : Activity() {
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             settings.allowFileAccess = false
             settings.allowContentAccess = false
+
+            // 关键：启用 viewport 和响应式布局支持
+            settings.useWideViewPort = true
+            settings.loadWithOverviewMode = true
+            settings.layoutAlgorithm = WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING
+
+            // 禁用缩放，确保 CSS 像素与物理像素正确对应
+            settings.setSupportZoom(false)
+            settings.builtInZoomControls = false
+            settings.displayZoomControls = false
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     return !isAllowedUrl(request.url)

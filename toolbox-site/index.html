@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>学习工具箱</title>
   <style>
     :root {
@@ -33,7 +33,7 @@
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html { min-height: 100%; background: var(--bg); }
     body {
-      min-height: 100dvh;
+      min-height: 100vh;  /* 改用 vh，WebView 兼容性更好 */
       margin: 0;
       color: var(--ink);
       background: var(--bg);
@@ -577,8 +577,8 @@
       .panel-head { flex-direction: column; align-items: flex-start; }
       .settings-grid { grid-template-columns: 1fr; }
       .chat-shell {
-        height: calc(100dvh - 180px);
-        max-height: calc(100dvh - 180px);
+        height: calc(100vh - 180px);  /* 改用 vh，WebView 兼容性更好 */
+        max-height: calc(100vh - 180px);
         border-radius: 16px;
         margin: 0 -16px;
         width: calc(100% + 32px);
@@ -764,6 +764,7 @@
               <span id="chatStatus">准备同步</span>
             </div>
             <span class="tag blue" id="chatRolePill">queen端</span>
+            <span class="tag" style="background: #C4612F; color: white; font-weight: 700;">v2026.06.21.23</span>
           </div>
           <details class="chat-settings" id="chatSettingsBox">
             <summary class="settings-toggle">
@@ -1483,14 +1484,27 @@
       const node = list.querySelector('[data-chat-id="' + anchor.id + '"]');
       if (!node) return;
 
-      // 计算当前锚点节点相对于容器的偏移
-      const containerRect = list.getBoundingClientRect();
-      const nodeRect = node.getBoundingClientRect();
-      const currentOffsetTop = nodeRect.top - containerRect.top;
+      // 使用 requestAnimationFrame 确保 DOM 渲染完成
+      requestAnimationFrame(() => {
+        // 计算当前锚点节点相对于容器的偏移
+        const containerRect = list.getBoundingClientRect();
+        const nodeRect = node.getBoundingClientRect();
+        const currentOffsetTop = nodeRect.top - containerRect.top;
 
-      // 调整滚动位置，使锚点节点回到原来的位置
-      const scrollDelta = currentOffsetTop - anchor.offsetTop;
-      list.scrollTop += scrollDelta;
+        // 调整滚动位置，使锚点节点回到原来的位置
+        const scrollDelta = currentOffsetTop - anchor.offsetTop;
+        list.scrollTop += scrollDelta;
+
+        // WebView 兼容性：再次确认位置（某些设备需要二次调整）
+        requestAnimationFrame(() => {
+          const finalRect = node.getBoundingClientRect();
+          const finalOffsetTop = finalRect.top - list.getBoundingClientRect().top;
+          const finalDelta = finalOffsetTop - anchor.offsetTop;
+          if (Math.abs(finalDelta) > 2) {  // 容差 2px
+            list.scrollTop += finalDelta;
+          }
+        });
+      });
     }
 
     async function loadChatMessages(force = false) {
