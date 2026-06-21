@@ -91,10 +91,18 @@ class MicroChatPollWorker(
             ).apply {
                 description = "微聊新消息提醒和桌面通知点"
                 setShowBadge(true)
+                enableLights(true)
+                enableVibration(true)
             }
             manager.createNotificationChannel(channel)
         }
-        val notification = Notification.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
+
+        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(applicationContext)
+        }
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("微聊有新消息")
             .setContentText("${message.senderName}：${message.body.take(80)}")
@@ -103,6 +111,8 @@ class MicroChatPollWorker(
             .setNumber(1)
             .setContentIntent(MainActivity.chatPendingIntent(applicationContext))
             .setAutoCancel(true)
+            .setDefaults(Notification.DEFAULT_ALL)
+            .setPriority(Notification.PRIORITY_HIGH)
             .build()
         manager.notify(NATIVE_CHAT_NOTIFICATION_ID, notification)
     }
@@ -128,6 +138,7 @@ class MicroChatPollWorker(
                         .setRequiredNetworkType(NetworkType.CONNECTED)
                         .build()
                 )
+                .setInitialDelay(1, TimeUnit.MINUTES) // 首次延迟1分钟，加快初始轮询
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
