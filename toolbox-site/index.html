@@ -330,16 +330,109 @@
       font-size: 13px;
     }
     .attachment-preview.active { display: flex; }
+    .attachment-actions {
+      grid-column: 1 / -1;
+      display: none;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 18px;
+      background: var(--bg);
+    }
+    .attachment-actions.active { display: flex; }
+    .attachment-actions button {
+      flex: 1;
+      min-height: 48px;
+      border-radius: 16px;
+    }
     .attach-button, .voice-button { min-width: 42px; padding-inline: 0; font-size: 18px; }
-    .voice-button.recording {
-      background: var(--danger);
+    .voice-button.active { background: var(--brand); color: #fff; }
+    .voice-panel {
+      grid-column: 1 / -1;
+      display: none;
+      gap: 10px;
+      align-items: center;
+      grid-template-columns: 1fr auto;
+    }
+    .voice-panel.active { display: grid; }
+    .hold-voice-button {
+      min-height: 48px;
+      border-radius: 18px;
+      background: var(--soft);
+      color: var(--ink);
+      user-select: none;
+      touch-action: none;
+      box-shadow: inset 0 0 0 1px rgba(83, 109, 254, .14);
+    }
+    .hold-voice-button.recording {
+      background: #ffe8e8;
+      color: var(--danger);
+      box-shadow: inset 0 0 0 1px rgba(199, 53, 53, .25);
+    }
+    .voice-cancel-button { min-width: 70px; }
+    .voice-recording-sheet {
+      position: fixed;
+      left: 50%;
+      bottom: calc(118px + env(safe-area-inset-bottom));
+      z-index: 155;
+      width: min(300px, calc(100vw - 40px));
+      transform: translate(-50%, 16px) scale(.96);
+      opacity: 0;
+      pointer-events: none;
+      border-radius: 24px;
+      padding: 18px;
       color: #fff;
-      animation: pulseVoice 1s ease-in-out infinite;
+      text-align: center;
+      background: rgba(25, 32, 51, .88);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 20px 60px rgba(0,0,0,.32);
+      transition: opacity .18s ease, transform .18s ease, background .18s ease;
     }
-    @keyframes pulseVoice {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.06); }
+    .voice-recording-sheet.active {
+      opacity: 1;
+      transform: translate(-50%, 0) scale(1);
     }
+    .voice-recording-sheet.cancel {
+      background: rgba(199, 53, 53, .92);
+    }
+    .voice-wave {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      height: 34px;
+      margin-bottom: 10px;
+    }
+    .voice-wave span {
+      width: 4px;
+      height: 12px;
+      border-radius: 999px;
+      background: #fff;
+      animation: voiceWave .8s ease-in-out infinite;
+    }
+    .voice-wave span:nth-child(2) { animation-delay: .1s; }
+    .voice-wave span:nth-child(3) { animation-delay: .2s; }
+    .voice-wave span:nth-child(4) { animation-delay: .3s; }
+    @keyframes voiceWave {
+      0%, 100% { transform: scaleY(.6); opacity: .65; }
+      50% { transform: scaleY(1.8); opacity: 1; }
+    }
+    .voice-recording-time { display: block; font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+    .voice-recording-hint { margin: 0; opacity: .86; font-size: 13px; }
+    .voice-message {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 150px;
+      max-width: min(64vw, 280px);
+      padding: 9px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.22);
+      color: inherit;
+      box-shadow: none;
+      text-align: left;
+    }
+    .chat-message.other .voice-message { background: rgba(255,255,255,.78); }
+    .voice-message span { font-size: 12px; opacity: .75; }
     .chat-composer textarea {
       min-height: 38px; max-height: 120px; resize: none; margin: 0;
       border-radius: 18px; padding: 8px 12px; background: var(--surface-solid);
@@ -688,10 +781,24 @@
               <span id="attachmentName"></span>
               <button class="ghost" type="button" onclick="clearSelectedFile()">移除</button>
             </div>
+            <div id="attachmentActions" class="attachment-actions" aria-label="选择附件类型">
+              <button class="secondary" type="button" onclick="openImagePicker()">相册</button>
+              <button class="secondary" type="button" onclick="openFilePicker()">文件</button>
+            </div>
+            <div id="voicePanel" class="voice-panel" aria-label="语音留言">
+              <button id="holdVoiceButton" class="hold-voice-button" type="button"
+                onpointerdown="startVoicePress(event)"
+                onpointermove="moveVoicePress(event)"
+                onpointerup="endVoicePress(event)"
+                onpointercancel="cancelVoicePress(event)"
+                onpointerleave="moveVoicePress(event)">按住说话</button>
+              <button class="secondary voice-cancel-button" type="button" onclick="cancelVoicePress()">取消</button>
+            </div>
             <button class="secondary" type="button" onclick="loadChatMessages(true)" aria-label="刷新微聊">刷新</button>
-            <button class="secondary attach-button" type="button" onclick="document.getElementById('chatFile').click()" aria-label="选择图片或文件">+</button>
-            <input id="chatFile" class="hidden" type="file" accept="image/*,audio/*,.html,.htm,.txt,.pdf,.zip" onchange="selectChatFile()" />
-            <button id="voiceButton" class="secondary voice-button" type="button" onclick="toggleVoiceRecording()" aria-label="录制语音">🎙</button>
+            <button class="secondary attach-button" type="button" onclick="toggleAttachmentPanel()" aria-label="选择图片或文件">+</button>
+            <input id="chatImageFile" class="hidden" type="file" accept="image/*" onchange="selectChatFile('chatImageFile')" />
+            <input id="chatFile" class="hidden" type="file" accept="audio/*,.html,.htm,.txt,.pdf,.zip" onchange="selectChatFile('chatFile')" />
+            <button id="voiceButton" class="secondary voice-button" type="button" onclick="toggleVoicePanel()" aria-label="录制语音">🎙</button>
             <textarea id="chatBody" placeholder="写一条留言..." rows="1"></textarea>
             <button id="chatSendButton" type="button" onclick="sendChatMessage()">发送</button>
           </div>
@@ -769,6 +876,11 @@
       <img id="imageViewerImg" alt="图片预览" onclick="event.stopPropagation()" />
     </div>
   </div>
+  <div id="voiceRecordingSheet" class="voice-recording-sheet" aria-live="polite">
+    <div class="voice-wave" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    <strong id="voiceRecordingTime" class="voice-recording-time">0:00</strong>
+    <p id="voiceRecordingHint" class="voice-recording-hint">松开发送，上滑取消</p>
+  </div>
 
   <script>
     const htmlKey = 'study_toolbox_html_records_v1';
@@ -793,6 +905,15 @@
     let voiceRecorder = null;
     let voiceStream = null;
     let voiceChunks = [];
+    let voiceModeActive = false;
+    let voiceBackend = '';
+    let voiceRecording = false;
+    let voiceCancelRequested = false;
+    let voiceRecordStartedAt = 0;
+    let voiceTimer = null;
+    let voicePointerId = null;
+    let voiceStartY = 0;
+    let attachmentPanelOpen = false;
     const imageViewerPointers = new Map();
 
     document.body.classList.toggle('toolbox-app', isToolboxApp);
@@ -806,6 +927,10 @@
       }
       document.body.classList.toggle('home-active', id === 'home');
       exitRunner();
+      if (id !== 'chatPanel') {
+        cancelVoicePress();
+        closeAttachmentPanel();
+      }
       renderHtmlList();
       updateStats();
       if (id === 'chatPanel') loadChatMessages(true);
@@ -1279,7 +1404,11 @@
       if (!(window.StudyToolbox && StudyToolbox.showNotification)) return;
       const title = newCount > 1 ? '微聊有 ' + newCount + ' 条新消息' : '微聊有新消息';
       const message = latestItem.sender_name + '：' + (latestItem.body || latestItem.attachment_name || '发来一个附件');
-      StudyToolbox.showNotification(title, message.slice(0, 120));
+      if (StudyToolbox.showChatBadge) {
+        StudyToolbox.showChatBadge(title, message.slice(0, 120), latestItem.id);
+      } else {
+        StudyToolbox.showNotification(title, message.slice(0, 120));
+      }
       lastNotifiedChatId = latestItem.id;
       localStorage.setItem('study_toolbox_last_notified_chat_id', String(lastNotifiedChatId));
     }
@@ -1305,6 +1434,28 @@
     function trackChatWindow(item) {
       chatLastId = Math.max(chatLastId, item.id);
       chatOldestId = chatOldestId ? Math.min(chatOldestId, item.id) : item.id;
+    }
+
+    function firstVisibleChatAnchor(list) {
+      const listTop = list.getBoundingClientRect().top;
+      const nodes = Array.from(list.querySelectorAll('[data-chat-id]'));
+      for (const node of nodes) {
+        if (node.getBoundingClientRect().bottom >= listTop + 8) {
+          return {
+            id: node.dataset.chatId,
+            offset: node.getBoundingClientRect().top - listTop
+          };
+        }
+      }
+      return null;
+    }
+
+    function restoreChatAnchor(list, anchor) {
+      if (!anchor) return;
+      const node = list.querySelector('[data-chat-id="' + anchor.id + '"]');
+      if (!node) return;
+      const listTop = list.getBoundingClientRect().top;
+      list.scrollTop += node.getBoundingClientRect().top - listTop - anchor.offset;
     }
 
     async function loadChatMessages(force = false) {
@@ -1362,8 +1513,7 @@
       if (!chatOldestId || !chatHasOlder) return;
       const button = document.getElementById('loadOlderChatButton');
       const list = document.getElementById('chatList');
-      const beforeHeight = list.scrollHeight;
-      const beforeTop = list.scrollTop;
+      const anchor = firstVisibleChatAnchor(list);
       button.disabled = true;
       try {
         const res = await fetch(chatApi + '?before_id=' + chatOldestId, { cache: 'no-store' });
@@ -1380,8 +1530,11 @@
           list.insertAdjacentHTML('afterbegin', freshItems.map(item => renderChatMessage(item, settings)).join(''));
         }
         chatHasOlder = items.length > 0 && chatOldestId > 1;
-        list.scrollTop = list.scrollHeight - beforeHeight + beforeTop;
-        updateOlderChatButton();
+        requestAnimationFrame(() => {
+          restoreChatAnchor(list, anchor);
+          updateOlderChatButton();
+          setTimeout(() => restoreChatAnchor(list, anchor), 260);
+        });
         if (!items.length) toast('没有更早的消息了');
       } catch (error) {
         toast('加载更早消息失败，稍后再试');
@@ -1438,43 +1591,206 @@
       });
     }
 
-    async function toggleVoiceRecording() {
-      if (voiceRecorder && voiceRecorder.state === 'recording') {
-        voiceRecorder.stop();
+    function toggleAttachmentPanel() {
+      attachmentPanelOpen = !attachmentPanelOpen;
+      if (attachmentPanelOpen) {
+        closeVoicePanel();
+      }
+      document.getElementById('attachmentActions').classList.toggle('active', attachmentPanelOpen);
+    }
+
+    function closeAttachmentPanel() {
+      attachmentPanelOpen = false;
+      const panel = document.getElementById('attachmentActions');
+      if (panel) panel.classList.remove('active');
+    }
+
+    function openImagePicker() {
+      closeAttachmentPanel();
+      document.getElementById('chatImageFile').click();
+    }
+
+    function openFilePicker() {
+      closeAttachmentPanel();
+      document.getElementById('chatFile').click();
+    }
+
+    function toggleVoicePanel() {
+      voiceModeActive = !voiceModeActive;
+      if (voiceModeActive) {
+        closeAttachmentPanel();
+      }
+      updateVoicePanel();
+    }
+
+    function closeVoicePanel() {
+      voiceModeActive = false;
+      updateVoicePanel();
+    }
+
+    function updateVoicePanel() {
+      document.getElementById('voicePanel').classList.toggle('active', voiceModeActive);
+      document.getElementById('voiceButton').classList.toggle('active', voiceModeActive);
+      document.getElementById('chatBody').classList.toggle('hidden', voiceModeActive);
+    }
+
+    async function startVoicePress(event) {
+      if (event) {
+        event.preventDefault();
+        voicePointerId = event.pointerId;
+        voiceStartY = event.clientY || 0;
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+      }
+      if (voiceRecording) return;
+      voiceCancelRequested = false;
+      voiceRecordStartedAt = Date.now();
+      const started = await beginVoiceRecording();
+      if (!started) {
+        resetVoiceUi();
         return;
       }
+      voiceRecording = true;
+      updateVoiceRecordingUi();
+      voiceTimer = setInterval(updateVoiceRecordingUi, 200);
+    }
+
+    function moveVoicePress(event) {
+      if (!voiceRecording || !event || event.pointerId !== voicePointerId) return;
+      voiceCancelRequested = voiceStartY - event.clientY > 70;
+      updateVoiceRecordingUi();
+    }
+
+    async function endVoicePress(event) {
+      if (event) event.preventDefault();
+      if (!voiceRecording) return;
+      await finishVoiceRecording(voiceCancelRequested);
+    }
+
+    async function cancelVoicePress() {
+      if (voiceRecording) {
+        await finishVoiceRecording(true);
+      }
+      resetVoiceUi();
+    }
+
+    async function beginVoiceRecording() {
+      if (isToolboxApp && window.StudyToolbox && StudyToolbox.startNativeVoiceRecording) {
+        const nativeResult = parseBridgeJson(StudyToolbox.startNativeVoiceRecording());
+        if (nativeResult.ok) {
+          voiceBackend = 'native';
+          return true;
+        }
+        if (nativeResult.reason === 'permission_requested') {
+          toast('请允许麦克风权限后再按住说话');
+          return false;
+        }
+      }
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
-        return toast('当前环境不支持录音');
+        toast('当前环境不支持录音');
+        return false;
       }
       try {
         voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+        const mimeType = preferredWebVoiceMime();
         voiceChunks = [];
-        voiceRecorder = new MediaRecorder(voiceStream, { mimeType });
+        voiceRecorder = new MediaRecorder(voiceStream, mimeType ? { mimeType } : undefined);
         voiceRecorder.addEventListener('dataavailable', event => {
           if (event.data && event.data.size) voiceChunks.push(event.data);
         });
-        voiceRecorder.addEventListener('stop', sendRecordedVoice);
+        voiceBackend = 'web';
         voiceRecorder.start();
-        document.getElementById('voiceButton').classList.add('recording');
-        document.getElementById('voiceButton').textContent = '■';
-        toast('正在录音，点方块发送');
+        return true;
       } catch (error) {
         stopVoiceStream();
         toast('无法开始录音，请检查麦克风权限');
+        return false;
       }
     }
 
-    async function sendRecordedVoice() {
-      document.getElementById('voiceButton').classList.remove('recording');
-      document.getElementById('voiceButton').textContent = '🎙';
-      stopVoiceStream();
-      if (!voiceChunks.length) return toast('没有录到声音');
-      const blob = new Blob(voiceChunks, { type: voiceChunks[0].type || 'audio/webm' });
-      const fileName = 'voice-' + new Date().toISOString().replace(/[:.]/g, '-') + '.webm';
-      selectedChatFile = new File([blob], fileName, { type: blob.type || 'audio/webm' });
+    async function finishVoiceRecording(cancelled) {
+      const durationMs = Date.now() - voiceRecordStartedAt;
+      const shouldCancel = cancelled || durationMs < 700;
+      if (durationMs < 700 && !cancelled) toast('说话时间太短啦');
+      if (voiceBackend === 'native') {
+        const result = shouldCancel
+          ? parseBridgeJson(StudyToolbox.cancelNativeVoiceRecording())
+          : parseBridgeJson(StudyToolbox.stopNativeVoiceRecording());
+        resetVoiceUi();
+        if (!shouldCancel && result.ok) {
+          await sendVoiceFile(base64ToFile(result.base64, result.fileName || 'voice.m4a', result.mime || 'audio/mp4'));
+        }
+        return;
+      }
+      if (voiceBackend === 'web' && voiceRecorder && voiceRecorder.state === 'recording') {
+        const recorder = voiceRecorder;
+        const chunks = voiceChunks;
+        const mime = recorder.mimeType || preferredWebVoiceMime() || 'audio/webm';
+        recorder.addEventListener('stop', async () => {
+          stopVoiceStream();
+          resetVoiceUi();
+          if (shouldCancel) return;
+          const ext = mime.includes('mp4') ? 'm4a' : 'webm';
+          const blob = new Blob(chunks, { type: mime });
+          await sendVoiceFile(new File([blob], voiceFileName(ext), { type: mime }));
+        }, { once: true });
+        recorder.stop();
+        return;
+      }
+      resetVoiceUi();
+    }
+
+    async function sendVoiceFile(file) {
+      if (!file || !file.size) return toast('没有录到声音');
+      selectedChatFile = file;
       updateAttachmentPreview();
       await sendChatMessage();
+    }
+
+    function preferredWebVoiceMime() {
+      const candidates = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'];
+      return candidates.find(type => window.MediaRecorder && MediaRecorder.isTypeSupported(type)) || '';
+    }
+
+    function voiceFileName(ext) {
+      return 'voice-' + new Date().toISOString().replace(/[:.]/g, '-') + '.' + ext;
+    }
+
+    function base64ToFile(base64, fileName, mime) {
+      const binary = atob(base64 || '');
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+      }
+      return new File([bytes], fileName, { type: mime });
+    }
+
+    function parseBridgeJson(value) {
+      try { return JSON.parse(value || '{}'); } catch { return { ok: false, reason: 'bad_json' }; }
+    }
+
+    function updateVoiceRecordingUi() {
+      const elapsed = Math.max(0, Date.now() - voiceRecordStartedAt);
+      const seconds = Math.floor(elapsed / 1000);
+      const sheet = document.getElementById('voiceRecordingSheet');
+      document.getElementById('holdVoiceButton').classList.toggle('recording', voiceRecording);
+      document.getElementById('holdVoiceButton').textContent = voiceCancelRequested ? '松手取消' : '松开发送';
+      document.getElementById('voiceRecordingTime').textContent = Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+      document.getElementById('voiceRecordingHint').textContent = voiceCancelRequested ? '松开手指，取消发送' : '松开发送，上滑取消';
+      sheet.classList.toggle('active', voiceRecording);
+      sheet.classList.toggle('cancel', voiceCancelRequested);
+    }
+
+    function resetVoiceUi() {
+      clearInterval(voiceTimer);
+      voiceTimer = null;
+      voiceRecording = false;
+      voiceCancelRequested = false;
+      voiceBackend = '';
+      voicePointerId = null;
+      voiceRecordStartedAt = 0;
+      document.getElementById('holdVoiceButton').classList.remove('recording');
+      document.getElementById('holdVoiceButton').textContent = '按住说话';
+      document.getElementById('voiceRecordingSheet').classList.remove('active', 'cancel');
     }
 
     function stopVoiceStream() {
@@ -1485,8 +1801,8 @@
       voiceRecorder = null;
     }
 
-    function selectChatFile() {
-      const input = document.getElementById('chatFile');
+    function selectChatFile(inputId) {
+      const input = document.getElementById(inputId || 'chatFile');
       selectedChatFile = input.files && input.files[0] ? input.files[0] : null;
       updateAttachmentPreview();
     }
@@ -1494,6 +1810,7 @@
     function clearSelectedFile() {
       selectedChatFile = null;
       document.getElementById('chatFile').value = '';
+      document.getElementById('chatImageFile').value = '';
       updateAttachmentPreview();
     }
 
@@ -1515,11 +1832,35 @@
           '<img src="' + url + '" alt="' + name + '" loading="lazy" /></button>' + body + '</div>';
       }
       if (item.message_type === 'audio') {
-        return '<div class="chat-attachment file-card">' +
-          '<strong>语音留言</strong><audio controls preload="metadata" src="' + url + '"></audio>' + body + '</div>';
+        const audioId = 'voice-' + item.id;
+        return '<div class="chat-attachment">' +
+          '<button class="voice-message" type="button" onclick="playVoiceMessage(\'' + audioId + '\', this)">' +
+          '<strong>▶</strong><span>语音留言 · 点击播放</span></button>' +
+          '<audio id="' + audioId + '" preload="metadata" src="' + url + '"></audio>' + body + '</div>';
       }
       return '<a class="chat-attachment file-card" href="' + url + '" target="_blank" rel="noopener" download>' +
         '<strong>' + name + '</strong><span>' + escapeHtml(formatFileSize(item.attachment_size)) + '</span>' + body + '</a>';
+    }
+
+    function playVoiceMessage(audioId, button) {
+      const audio = document.getElementById(audioId);
+      if (!audio) return;
+      document.querySelectorAll('audio').forEach(item => {
+        if (item !== audio) item.pause();
+      });
+      if (audio.paused) {
+        audio.play().then(() => {
+          button.querySelector('strong').textContent = 'Ⅱ';
+          button.querySelector('span').textContent = '播放中，再点暂停';
+        }).catch(() => toast('暂时无法播放这条语音'));
+      } else {
+        audio.pause();
+      }
+      audio.onpause = () => {
+        button.querySelector('strong').textContent = '▶';
+        button.querySelector('span').textContent = '语音留言 · 点击播放';
+      };
+      audio.onended = audio.onpause;
     }
 
     function renderAvatarHtml(value, name) {

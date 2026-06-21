@@ -219,9 +219,9 @@ android/app/build/outputs/apk/debug/app-debug.apk
 
 2026-06-21+ APK 新能力：
 
-- 孩子端 WebView 可打开系统文件选择器上传图片、音频和文件。
-- 孩子端 WebView 可申请麦克风权限录制语音留言。
-- 原生 `MicroChatPollWorker` 会在系统允许时约 15 分钟轮询一次家长微聊消息，并用系统通知支撑桌面通知点。
+- 孩子端图片优先打开 Android Photo Picker / 系统相册选择器，普通附件再打开文件选择器。
+- 孩子端按住说话优先调用原生 M4A 录音桥，浏览器网页端回退到 `MediaRecorder`。
+- 原生 `MicroChatPollWorker` 会在系统允许时约 15 分钟轮询一次家长微聊消息，并用独立微聊通知通道支撑桌面通知点。
 
 ## 常见问题
 
@@ -243,7 +243,7 @@ android/app/build/outputs/apk/debug/app-debug.apk
 
 ### 微聊没有系统通知或桌面小红点
 
-当前 APK 有两层提醒：网页运行时调用 `StudyToolbox.showNotification(title, message)` 原生桥；2026-06-21+ APK 还会用 `MicroChatPollWorker` 后台轮询家长消息。Android 通知存在时，支持通知点的启动器通常会在 App 图标上显示小红点。若没有效果，检查：
+当前 APK 有两层提醒：网页运行时调用 `StudyToolbox.showChatBadge(title, message, id)` 原生桥；2026-06-21+ APK 还会用 `MicroChatPollWorker` 后台轮询家长消息。Android 通知存在时，支持通知点的启动器通常会在 App 图标上显示小红点。若没有效果，检查：
 
 1. 平板系统是否授予“学习工具箱”通知权限。
 2. 系统设置里该 App 的“通知点/桌面角标”是否开启。
@@ -257,7 +257,7 @@ android/app/build/outputs/apk/debug/app-debug.apk
 
 ### 孩子端图片或语音发不出去
 
-检查是否安装 2026-06-21+ APK。旧 APK 没有 WebView 文件选择器和麦克风权限桥，网页代码即使已更新，也无法在 App 内完成图片选择或语音录制。
+检查是否安装 2026-06-21+ APK。旧 APK 没有图库式图片选择、原生 M4A 录音桥和麦克风权限桥，网页代码即使已更新，也无法在 App 内稳定完成图片选择、语音录制或兼容播放。
 
 ### 粘贴 HTML 卡顿
 

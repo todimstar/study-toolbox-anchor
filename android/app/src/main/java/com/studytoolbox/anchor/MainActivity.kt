@@ -13,9 +13,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
+import android.util.Base64
 import android.view.Gravity
 import android.view.View
 import android.webkit.JavascriptInterface
@@ -30,12 +33,17 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import org.json.JSONObject
+import java.io.File
 
 class MainActivity : Activity() {
     private lateinit var webView: WebView
     private lateinit var toolbar: LinearLayout
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var pendingPermissionRequest: PermissionRequest? = null
+    private var voiceRecorder: MediaRecorder? = null
+    private var voiceOutputFile: File? = null
+    private var voiceRecordStartedAt: Long = 0
     private val notificationManager by lazy {
         getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
@@ -72,7 +80,7 @@ class MainActivity : Activity() {
                     this@MainActivity.filePathCallback?.onReceiveValue(null)
                     this@MainActivity.filePathCallback = filePathCallback
                     return try {
-                        startActivityForResult(fileChooserParams.createIntent(), REQUEST_FILE_CHOOSER)
+                        startActivityForResult(fileChooserIntent(fileChooserParams), REQUEST_FILE_CHOOSER)
                         true
                     } catch (error: Exception) {
                         this@MainActivity.filePathCallback = null
@@ -115,7 +123,7 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQUEST_FILE_CHOOSER) return
-        val result = WebChromeClient.FileChooserParams.parseResult(resultCode, data)
+        val result = parseFileChooserResult(resultCode, data)
         filePathCallback?.onReceiveValue(result)
         filePathCallback = null
     }
@@ -235,7 +243,7 @@ class MainActivity : Activity() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val channel = NotificationChannel(
+        val defaultChannel = NotificationChannel(
             NOTIFICATION_CHANNEL_ID,
             "学习工具箱提醒",
             NotificationManager.IMPORTANCE_DEFAULT
@@ -243,7 +251,16 @@ class MainActivity : Activity() {
             description = "TODO、互动审核和工具箱消息提醒"
             setShowBadge(true)
         }
-        notificationManager.createNotificationChannel(channel)
+        val chatChannel = NotificationChannel(
+            CHAT_NOTIFICATION_CHANNEL_ID,
+            "微聊新消息",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "微聊新消息提醒和桌面通知点"
+            setShowBadge(true)
+        }
+        notificationManager.createNotificationChannel(defaultChannel)
+        notificationManager.createNotificationChannel(chatChannel)
     }
 
     private fun requestNotificationPermissionIfNeeded() {
@@ -256,25 +273,26 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun showNotification(title: String?, message: String?) {
             runOnUiThread {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    requestNotificationPermissionIfNeeded()
-                    return@runOnUiThread
-                }
+                postChatNotification(
+                    title?.takeIf { it.isNotBlank() } ?: "学习工具箱",
+                    message?.takeIf { it.isNotBlank() } ?: "你有一条新提醒",
+                    System.currentTimeMillis().toInt()
+                )
+            }
+        }
 
-                val notification = Notification.Builder(this@MainActivity, NOTIFICATION_CHANNEL_ID)
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentTitle(title?.takeIf { it.isNotBlank() } ?: "学习工具箱")
-                    .setContentText(message?.takeIf { it.isNotBlank() } ?: "你有一条新提醒")
-                    .setStyle(Notification.BigTextStyle().bigText(message ?: "你有一条新提醒"))
-                    .setBadgeIconType(Notification.BADGE_ICON_SMALL)
-                    .setNumber(1)
-                    .setContentIntent(chatPendingIntent(this@MainActivity))
-                    .setAutoCancel(true)
-                    .build()
-
-                notificationManager.notify(System.currentTimeMillis().toInt(), notification)
+        @JavascriptInterface
+        fun showChatBadge(title: String?, message: String?, messageId: Int) {
+            runOnUiThread {
+                if (messageId <= 0) return@runOnUiThread
+                val prefs = getSharedPreferences(NATIVE_PREFS_NAME, Context.MODE_PRIVATE)
+                if (messageId <= prefs.getInt(KEY_LAST_NOTIFIED_PARENT_ID, 0)) return@runOnUiThread
+                prefs.edit().putInt(KEY_LAST_NOTIFIED_PARENT_ID, messageId).apply()
+                postChatNotification(
+                    title?.takeIf { it.isNotBlank() } ?: "微聊有新消息",
+                    message?.takeIf { it.isNotBlank() } ?: "高人发来一条新消息",
+                    CHAT_NOTIFICATION_ID
+                )
             }
         }
 
@@ -304,7 +322,144 @@ class MainActivity : Activity() {
                 ClipData.newPlainText("学习工具箱", text.orEmpty())
             )
         }
+
+        @JavascriptInterface
+        fun isNativeVoiceRecorderAvailable(): Boolean = true
+
+        @JavascriptInterface
+        fun startNativeVoiceRecording(): String {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+            ) {
+                runOnUiThread {
+                    requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_NATIVE_AUDIO)
+                }
+                return voiceJson(ok = false, reason = "permission_requested")
+            }
+            return try {
+                cancelNativeVoiceRecording()
+                val output = File(cacheDir, "voice-${System.currentTimeMillis()}.m4a")
+                voiceOutputFile = output
+                voiceRecordStartedAt = System.currentTimeMillis()
+                voiceRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    MediaRecorder(this@MainActivity)
+                } else {
+                    @Suppress("DEPRECATION")
+                    MediaRecorder()
+                }.apply {
+                    setAudioSource(MediaRecorder.AudioSource.MIC)
+                    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                    setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                    setAudioEncodingBitRate(64_000)
+                    setAudioSamplingRate(44_100)
+                    setOutputFile(output.absolutePath)
+                    prepare()
+                    start()
+                }
+                voiceJson(ok = true)
+            } catch (error: Exception) {
+                releaseVoiceRecorder(deleteFile = true)
+                voiceJson(ok = false, reason = "start_failed")
+            }
+        }
+
+        @JavascriptInterface
+        fun stopNativeVoiceRecording(): String {
+            val recorder = voiceRecorder ?: return voiceJson(ok = false, reason = "not_recording")
+            val output = voiceOutputFile ?: return voiceJson(ok = false, reason = "missing_file")
+            val durationMs = System.currentTimeMillis() - voiceRecordStartedAt
+            return try {
+                recorder.stop()
+                recorder.release()
+                voiceRecorder = null
+                voiceOutputFile = null
+                val bytes = output.readBytes()
+                val payload = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                output.delete()
+                JSONObject()
+                    .put("ok", true)
+                    .put("mime", "audio/mp4")
+                    .put("fileName", "voice-${System.currentTimeMillis()}.m4a")
+                    .put("durationMs", durationMs)
+                    .put("base64", payload)
+                    .toString()
+            } catch (error: Exception) {
+                releaseVoiceRecorder(deleteFile = true)
+                voiceJson(ok = false, reason = "stop_failed")
+            }
+        }
+
+        @JavascriptInterface
+        fun cancelNativeVoiceRecording(): String {
+            releaseVoiceRecorder(deleteFile = true)
+            return voiceJson(ok = true, reason = "cancelled")
+        }
     }
+
+    private fun fileChooserIntent(params: FileChooserParams): Intent {
+        val acceptTypes = params.acceptTypes.joinToString(",").lowercase()
+        val wantsImage = acceptTypes.isBlank() || acceptTypes.contains("image/")
+        if (wantsImage) {
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Intent(MediaStore.ACTION_PICK_IMAGES).apply {
+                    type = "image/*"
+                }
+            } else {
+                Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI).apply {
+                    type = "image/*"
+                }
+            }
+        }
+        return params.createIntent()
+    }
+
+    private fun parseFileChooserResult(resultCode: Int, data: Intent?): Array<Uri>? {
+        if (resultCode != RESULT_OK || data == null) return null
+        data.clipData?.let { clip ->
+            return Array(clip.itemCount) { index -> clip.getItemAt(index).uri }
+        }
+        data.data?.let { return arrayOf(it) }
+        return WebChromeClient.FileChooserParams.parseResult(resultCode, data)
+    }
+
+    private fun postChatNotification(title: String, message: String, notificationId: Int) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestNotificationPermissionIfNeeded()
+            return
+        }
+        val notification = Notification.Builder(this, CHAT_NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(Notification.BigTextStyle().bigText(message))
+            .setBadgeIconType(Notification.BADGE_ICON_SMALL)
+            .setNumber(1)
+            .setContentIntent(chatPendingIntent(this))
+            .setAutoCancel(true)
+            .build()
+        notificationManager.notify(notificationId, notification)
+    }
+
+    private fun releaseVoiceRecorder(deleteFile: Boolean) {
+        try {
+            voiceRecorder?.release()
+        } catch (_: Exception) {
+        }
+        voiceRecorder = null
+        if (deleteFile) {
+            voiceOutputFile?.delete()
+        }
+        voiceOutputFile = null
+        voiceRecordStartedAt = 0
+    }
+
+    private fun voiceJson(ok: Boolean, reason: String = ""): String =
+        JSONObject()
+            .put("ok", ok)
+            .put("reason", reason)
+            .toString()
 
     private val Int.dp: Int
         get() = (this * resources.displayMetrics.density).toInt()
@@ -314,7 +469,12 @@ class MainActivity : Activity() {
         private const val REQUEST_NOTIFICATIONS = 1001
         private const val REQUEST_FILE_CHOOSER = 1002
         private const val REQUEST_WEB_AUDIO = 1003
+        private const val REQUEST_NATIVE_AUDIO = 1004
         private const val NOTIFICATION_CHANNEL_ID = "study_toolbox_default"
+        private const val CHAT_NOTIFICATION_CHANNEL_ID = "study_toolbox_chat_messages"
+        private const val CHAT_NOTIFICATION_ID = 2001
+        private const val NATIVE_PREFS_NAME = "study_toolbox_native_prefs"
+        private const val KEY_LAST_NOTIFIED_PARENT_ID = "last_notified_parent_message_id"
 
         fun chatPendingIntent(context: Context): PendingIntent {
             val intent = Intent(context, MainActivity::class.java).apply {

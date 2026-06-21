@@ -30,13 +30,17 @@ class MicroChatPollWorker(
             val latest = fetchLatestParentMessage() ?: return Result.success()
             val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val lastSeen = prefs.getInt(KEY_LAST_SEEN_PARENT_ID, 0)
+            val lastNotified = prefs.getInt(KEY_LAST_NOTIFIED_PARENT_ID, 0)
             if (lastSeen == 0) {
                 prefs.edit().putInt(KEY_LAST_SEEN_PARENT_ID, latest.id).apply()
                 return Result.success()
             }
-            if (latest.id > lastSeen) {
+            if (latest.id > lastSeen && latest.id > lastNotified) {
                 postNotification(latest)
-                prefs.edit().putInt(KEY_LAST_SEEN_PARENT_ID, latest.id).apply()
+                prefs.edit()
+                    .putInt(KEY_LAST_SEEN_PARENT_ID, latest.id)
+                    .putInt(KEY_LAST_NOTIFIED_PARENT_ID, latest.id)
+                    .apply()
             }
             Result.success()
         } catch (error: Exception) {
@@ -82,10 +86,10 @@ class MicroChatPollWorker(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
-                "学习工具箱提醒",
-                NotificationManager.IMPORTANCE_DEFAULT
+                "微聊新消息",
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "微聊和学习工具箱消息提醒"
+                description = "微聊新消息提醒和桌面通知点"
                 setShowBadge(true)
             }
             manager.createNotificationChannel(channel)
@@ -113,7 +117,8 @@ class MicroChatPollWorker(
         private const val WORK_NAME = "study_toolbox_micro_chat_poll"
         private const val PREFS_NAME = "study_toolbox_native_prefs"
         private const val KEY_LAST_SEEN_PARENT_ID = "last_seen_parent_message_id"
-        private const val NOTIFICATION_CHANNEL_ID = "study_toolbox_default"
+        private const val KEY_LAST_NOTIFIED_PARENT_ID = "last_notified_parent_message_id"
+        private const val NOTIFICATION_CHANNEL_ID = "study_toolbox_chat_messages"
         private const val NATIVE_CHAT_NOTIFICATION_ID = 2001
 
         fun enqueue(context: Context) {
