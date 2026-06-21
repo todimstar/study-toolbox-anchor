@@ -355,18 +355,21 @@
     }
     .voice-panel.active { display: grid; }
     .hold-voice-button {
-      min-height: 48px;
+      min-height: 52px;
       border-radius: 18px;
       background: var(--soft);
       color: var(--ink);
+      font-weight: 600;
       user-select: none;
       touch-action: none;
       box-shadow: inset 0 0 0 1px rgba(83, 109, 254, .14);
+      transition: all .15s ease;
     }
     .hold-voice-button.recording {
       background: #ffe8e8;
       color: var(--danger);
-      box-shadow: inset 0 0 0 1px rgba(199, 53, 53, .25);
+      box-shadow: inset 0 0 0 2px rgba(199, 53, 53, .35);
+      transform: scale(1.02);
     }
     .voice-cancel-button { min-width: 70px; }
     .voice-recording-sheet {
@@ -1439,6 +1442,7 @@
     function firstVisibleChatAnchor(list) {
       const listTop = list.getBoundingClientRect().top;
       const nodes = Array.from(list.querySelectorAll('[data-chat-id]'));
+      // 尝试找到第一个可见节点
       for (const node of nodes) {
         if (node.getBoundingClientRect().bottom >= listTop + 8) {
           return {
@@ -1447,15 +1451,34 @@
           };
         }
       }
-      return null;
+      // 备用策略：如果没有节点满足条件，使用第一个节点或保存滚动位置
+      if (nodes.length > 0) {
+        const firstNode = nodes[0];
+        return {
+          id: firstNode.dataset.chatId,
+          offset: firstNode.getBoundingClientRect().top - listTop,
+          scrollTop: list.scrollTop
+        };
+      }
+      // 最后备用：只保存滚动位置
+      return { scrollTop: list.scrollTop };
     }
 
     function restoreChatAnchor(list, anchor) {
       if (!anchor) return;
-      const node = list.querySelector('[data-chat-id="' + anchor.id + '"]');
-      if (!node) return;
-      const listTop = list.getBoundingClientRect().top;
-      list.scrollTop += node.getBoundingClientRect().top - listTop - anchor.offset;
+      // 如果有锚点ID，尝试使用节点恢复
+      if (anchor.id) {
+        const node = list.querySelector('[data-chat-id="' + anchor.id + '"]');
+        if (node) {
+          const listTop = list.getBoundingClientRect().top;
+          list.scrollTop += node.getBoundingClientRect().top - listTop - anchor.offset;
+          return;
+        }
+      }
+      // 备用策略：使用保存的scrollTop
+      if (typeof anchor.scrollTop === 'number') {
+        list.scrollTop = anchor.scrollTop;
+      }
     }
 
     async function loadChatMessages(force = false) {
@@ -1533,7 +1556,8 @@
         requestAnimationFrame(() => {
           restoreChatAnchor(list, anchor);
           updateOlderChatButton();
-          setTimeout(() => restoreChatAnchor(list, anchor), 260);
+          // 再次恢复以确保布局完成后位置正确
+          requestAnimationFrame(() => restoreChatAnchor(list, anchor));
         });
         if (!items.length) toast('没有更早的消息了');
       } catch (error) {
@@ -1565,19 +1589,27 @@
                 body
               })
             });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (!res.ok) {
+          const status = res.status;
+          if (status === 403) throw new Error('口令错误，请检查设置');
+          if (status === 413) throw new Error('文件太大，请选择小于 20MB 的文件');
+          throw new Error('HTTP ' + status);
+        }
         document.getElementById('chatBody').value = '';
         clearSelectedFile();
         await loadChatMessages(true);
+        console.log('[消息] 发送成功');
         toast('已发送');
       } catch (error) {
-        toast('发送失败，稍后再试');
+        console.error('[消息] 发送失败:', error);
+        toast(error.message || '发送失败，稍后再试');
       } finally {
         if (sendButton) sendButton.disabled = false;
       }
     }
 
     function sendFileMessage(settings, key, body) {
+      console.log('[文件] 准备上传文件:', selectedChatFile?.name, selectedChatFile?.size, 'bytes');
       const form = new FormData();
       form.append('sender_role', settings.role);
       form.append('sender_name', settings.name);
@@ -1674,8 +1706,11 @@
     }
 
     async function beginVoiceRecording() {
+      console.log('[语音] 开始录音，环境:', isToolboxApp ? 'App' : '浏览器');
       if (isToolboxApp && window.StudyToolbox && StudyToolbox.startNativeVoiceRecording) {
+        console.log('[语音] 尝试使用原生录音');
         const nativeResult = parseBridgeJson(StudyToolbox.startNativeVoiceRecording());
+        console.log('[语音] 原生录音结果:', nativeResult);
         if (nativeResult.ok) {
           voiceBackend = 'native';
           return true;
@@ -1686,12 +1721,15 @@
         }
       }
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+        console.error('[语音] 当前环境不支持录音');
         toast('当前环境不支持录音');
         return false;
       }
       try {
+        console.log('[语音] 使用Web录音');
         voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const mimeType = preferredWebVoiceMime();
+        console.log('[语音] Web录音格式:', mimeType);
         voiceChunks = [];
         voiceRecorder = new MediaRecorder(voiceStream, mimeType ? { mimeType } : undefined);
         voiceRecorder.addEventListener('dataavailable', event => {
@@ -1701,6 +1739,7 @@
         voiceRecorder.start();
         return true;
       } catch (error) {
+        console.error('[语音] 录音启动失败:', error);
         stopVoiceStream();
         toast('无法开始录音，请检查麦克风权限');
         return false;
@@ -1740,10 +1779,20 @@
     }
 
     async function sendVoiceFile(file) {
-      if (!file || !file.size) return toast('没有录到声音');
+      if (!file || !file.size) {
+        console.error('[语音] 录音文件无效:', file);
+        return toast('没有录到声音');
+      }
+      console.log('[语音] 准备发送语音文件:', file.name, file.size, 'bytes', file.type);
       selectedChatFile = file;
       updateAttachmentPreview();
-      await sendChatMessage();
+      try {
+        await sendChatMessage();
+        console.log('[语音] 语音消息发送成功');
+      } catch (error) {
+        console.error('[语音] 发送失败:', error);
+        toast('语音发送失败，请检查网络');
+      }
     }
 
     function preferredWebVoiceMime() {
@@ -1804,6 +1853,15 @@
     function selectChatFile(inputId) {
       const input = document.getElementById(inputId || 'chatFile');
       selectedChatFile = input.files && input.files[0] ? input.files[0] : null;
+      if (selectedChatFile) {
+        console.log('[文件] 已选择:', selectedChatFile.name, selectedChatFile.size, 'bytes', selectedChatFile.type);
+        // 检查文件大小（20MB）
+        if (selectedChatFile.size > 20 * 1024 * 1024) {
+          toast('文件太大，请选择小于 20MB 的文件');
+          selectedChatFile = null;
+          input.value = '';
+        }
+      }
       updateAttachmentPreview();
     }
 
@@ -1844,17 +1902,26 @@
 
     function playVoiceMessage(audioId, button) {
       const audio = document.getElementById(audioId);
-      if (!audio) return;
+      if (!audio) {
+        console.error('[语音] 找不到音频元素:', audioId);
+        return;
+      }
+      console.log('[语音] 播放/暂停语音:', audioId, audio.src);
       document.querySelectorAll('audio').forEach(item => {
         if (item !== audio) item.pause();
       });
       if (audio.paused) {
         audio.play().then(() => {
+          console.log('[语音] 开始播放');
           button.querySelector('strong').textContent = 'Ⅱ';
           button.querySelector('span').textContent = '播放中，再点暂停';
-        }).catch(() => toast('暂时无法播放这条语音'));
+        }).catch(error => {
+          console.error('[语音] 播放失败:', error);
+          toast('暂时无法播放这条语音');
+        });
       } else {
         audio.pause();
+        console.log('[语音] 已暂停');
       }
       audio.onpause = () => {
         button.querySelector('strong').textContent = '▶';
