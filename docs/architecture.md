@@ -34,6 +34,12 @@ Android 包名是 `com.studytoolbox.anchor`。它只做稳定的受控 WebView �
 - `StudyToolbox.setFullscreen(enabled)`：离线 HTML 运行器进入或退出沉浸式运行态。
 - `StudyToolbox.getClipboardText()` / `StudyToolbox.setClipboardText(text)`：大段 HTML 从剪贴板导入，避免 textarea 卡顿。
 
+2026-06-21+ APK 额外补齐：
+
+- WebView 文件选择器：让孩子端也能从微聊上传图片、音频和文件。
+- WebView 麦克风授权：让网页 `MediaRecorder` 能在 App 内录制语音留言。
+- `MicroChatPollWorker`：Android WorkManager 每 15 分钟左右轮询微聊家长消息，触发系统通知和支持通知点的桌面红点。
+
 ## 网页身份识别
 
 不需要重新安装 APK。网页通过检测：
@@ -58,7 +64,7 @@ Android 包名是 `com.studytoolbox.anchor`。它只做稳定的受控 WebView �
 - `sender_name`
 - `sender_avatar`
 - `body`
-- `message_type`: `text | image | file`
+- `message_type`: `text | image | audio | file`
 - `attachment_url`
 - `attachment_name`
 - `attachment_mime`
@@ -97,10 +103,10 @@ Android 包名是 `com.studytoolbox.anchor`。它只做稳定的受控 WebView �
 
 ## 设计取舍
 
-- 当前优先纯网页升级，因为平板已离开且不能重装 APK。
+- 2026-06-22 前存在一次装机窗口，应优先安装 2026-06-21+ APK；窗口结束后继续回到“网页 + 后端远程升级”为主。
 - 工具箱页面优先移动端和平板触控体验：底部导航、48px 触控目标、toast 反馈、全屏 HTML 运行器。
 - 当前微聊使用 3 秒轮询，足够 MVP；后续可升级 SSE 或 WebSocket。
 - 微聊首次加载必须取最新一页消息，而不是最早一页；否则消息超过默认分页上限后，新消息会看起来“丢失”。
-- 当前 APK 已有原生通知桥，网页可在收到新微聊时调用系统通知；Android 桌面图标小红点依赖系统通知点/启动器支持，且要求 App/WebView 仍在运行轮询。
+- 当前 APK 同时有网页通知桥和 WorkManager 微聊轮询。桌面图标小红点依赖 Android 通知权限、启动器通知点支持和系统调度，不保证像微信/QQ 一样实时。
 - 孩子端发送密钥目前在前端内置，适合家庭内轻量使用；后续拿到平板后应升级为 App 注入设备密钥。
 - 任务投递当前复用微聊口令体系，先保证平板离手后的远程可升级性；后续再拆出正式账号和设备绑定。

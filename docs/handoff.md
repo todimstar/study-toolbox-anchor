@@ -1,12 +1,12 @@
 # Handoff
 
-最后整理日期：2026-05-10
+最后整理日期：2026-06-21
 
 ## 当前项目状态
 
 项目已从“远程静默安装 APK”转向“学习工具箱锚点 App + 可远程更新网页 + 微聊后端”。
 
-平板已经安装了当前 APK，之后在拿不到平板的情况下，应优先通过 `toolbox-site/index.html` 和 `server/` 升级功能，不要依赖重新安装 APK。
+2026-06-22 前还有一次 APK 安装窗口，应优先安装 2026-06-21+ APK；之后在拿不到平板的情况下，应优先通过 `toolbox-site/index.html` 和 `server/` 升级功能，不要依赖重新安装 APK。
 
 ## 当前可用入口
 
@@ -15,6 +15,7 @@
 - 微聊 API：`/api/micro-chat/messages`
 - 后端入口：`server/app/main.py`
 - Android 主 Activity：`android/app/src/main/java/com/studytoolbox/anchor/MainActivity.kt`
+- 微聊后台轮询 Worker：`android/app/src/main/java/com/studytoolbox/anchor/MicroChatPollWorker.kt`
 
 ## 已完成
 
@@ -30,21 +31,25 @@
 - 添加 App 内孩子端自动识别。
 - 升级工具箱网页 UI：移动端底部导航、模块页隐藏首页横幅、全屏 HTML 运行器、小任务卡片列表、微聊气泡和 toast 反馈。
 - 微聊支持图片/文件发送，附件走 `/api/uploads/...`；Nginx 反代必须用 `location ^~ /api/` 避免图片静态规则抢走上传图片。
+- 微聊支持语音留言，网页端使用 `MediaRecorder` 录音并按音频附件上传，后端 `message_type` 会识别为 `audio`。
+- 2026-06-21+ APK 支持 WebView 文件选择器和麦克风权限桥，解决孩子端图片上传、语音录制问题。
 - 微聊支持本机设置昵称和头像；孩子端可改昵称/头像，家长端可改昵称/头像和口令。
 - 微聊设置区改为折叠；图片消息以缩略图展示，点击进入黑底大图预览，避免孩子端图片撑爆聊天窗口。
 - 任务模块已从本地 TODO 升级为亲子投递：家长发布任务，孩子接受/退回/完成，家长端查看全状态；孩子退回后家长可重发，并记录重发次数。
 - 图片消息大图预览支持按钮缩放、鼠标滚轮缩放、双击切换缩放和触屏双指缩放，方便查看高清细节。
 - 微聊首次加载改为取最新一页消息，避免消息超过分页上限后只看到最早消息。
 - 学习收件箱支持远程投递 HTML，孩子端可全屏运行或保存到本地记录。
-- 网页内微聊入口支持未读小红点；App 内运行时会用既有 `StudyToolbox.showNotification` 原生桥发系统通知，桌面图标红点取决于系统通知点能力。
+- 网页内微聊入口支持未读小红点；App 内运行时可用 `StudyToolbox.showNotification` 原生桥发系统通知；2026-06-21+ APK 还会用 WorkManager 后台轮询家长消息并触发通知/桌面通知点。
+- 微聊历史加载改为 QQ/微信式滑动窗口：默认只加载最新消息，滑到顶部才显示“加载更早消息”，可多轮向上补齐历史，重新进入微聊后恢复最新窗口。
 
 ## 下一步建议
 
 1. 上传最新 `toolbox-site/index.html` 到 `toolbox.zakuku.top`。
 2. 部署 `server/` 并重启 `study-toolbox`，确认 `/api/` 反向代理仍使用 `^~`。
 3. 在家长浏览器端填写 `PARENT_CHAT_KEY`，测试文字、图片和任务重发流程。
-4. 在平板端等待下次打开 App，确认自动孩子视角。
-5. 下一阶段可做 AI 辅助 TODO 拆分、父级批准的网址胶囊、SSE/Push 消息同步和 App 图标级红点。
+4. 在 2026-06-22 前安装 `android/app/build/outputs/apk/debug/app-debug.apk`，确认通知权限、图片上传和语音录制。
+5. 在平板端等待下次打开 App，确认自动孩子视角。
+6. 下一阶段可做 AI 辅助 TODO 拆分、父级批准的网址胶囊、SSE/Push 消息同步和更接近 IM 的原生推送。
 
 ## 红线
 

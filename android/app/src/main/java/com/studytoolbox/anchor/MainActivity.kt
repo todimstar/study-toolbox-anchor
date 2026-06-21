@@ -6,9 +6,11 @@ import android.app.Activity
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
@@ -17,6 +19,10 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.webkit.JavascriptInterface
+import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
+import android.webkit.WebChromeClient.FileChooserParams
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -28,6 +34,8 @@ import android.widget.TextView
 class MainActivity : Activity() {
     private lateinit var webView: WebView
     private lateinit var toolbar: LinearLayout
+    private var filePathCallback: ValueCallback<Array<Uri>>? = null
+    private var pendingPermissionRequest: PermissionRequest? = null
     private val notificationManager by lazy {
         getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
@@ -41,6 +49,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         createNotificationChannel()
         requestNotificationPermissionIfNeeded()
+        MicroChatPollWorker.enqueue(this)
 
         webView = WebView(this).apply {
             settings.javaScriptEnabled = true
@@ -54,11 +63,74 @@ class MainActivity : Activity() {
                     return !isAllowedUrl(request.url)
                 }
             }
+            webChromeClient = object : WebChromeClient() {
+                override fun onShowFileChooser(
+                    webView: WebView,
+                    filePathCallback: ValueCallback<Array<Uri>>,
+                    fileChooserParams: FileChooserParams
+                ): Boolean {
+                    this@MainActivity.filePathCallback?.onReceiveValue(null)
+                    this@MainActivity.filePathCallback = filePathCallback
+                    return try {
+                        startActivityForResult(fileChooserParams.createIntent(), REQUEST_FILE_CHOOSER)
+                        true
+                    } catch (error: Exception) {
+                        this@MainActivity.filePathCallback = null
+                        filePathCallback.onReceiveValue(null)
+                        false
+                    }
+                }
+
+                override fun onPermissionRequest(request: PermissionRequest) {
+                    val audioResources = request.resources.filter { it == PermissionRequest.RESOURCE_AUDIO_CAPTURE }.toTypedArray()
+                    if (audioResources.isEmpty()) {
+                        request.deny()
+                        return
+                    }
+                    runOnUiThread {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                            checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            request.grant(audioResources)
+                        } else {
+                            pendingPermissionRequest = request
+                            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_WEB_AUDIO)
+                        }
+                    }
+                }
+            }
             addJavascriptInterface(ToolboxBridge(), "StudyToolbox")
         }
 
         setContentView(createLayout())
         loadToolbox()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        loadToolbox()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_FILE_CHOOSER) return
+        val result = WebChromeClient.FileChooserParams.parseResult(resultCode, data)
+        filePathCallback?.onReceiveValue(result)
+        filePathCallback = null
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_WEB_AUDIO) {
+            val request = pendingPermissionRequest ?: return
+            pendingPermissionRequest = null
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+            } else {
+                request.deny()
+            }
+        }
     }
 
     override fun onBackPressed() {
@@ -115,8 +187,9 @@ class MainActivity : Activity() {
 
     private fun loadToolbox() {
         exitFullscreenMode()
+        val target = intent?.data?.takeIf { isAllowedUrl(it) }?.toString() ?: BuildConfig.TOOLBOX_URL
         if (toolboxUri.scheme == "https" && !toolboxUri.host.isNullOrBlank()) {
-            webView.loadUrl(BuildConfig.TOOLBOX_URL)
+            webView.loadUrl(target)
         } else {
             loadLocalHome()
         }
@@ -168,6 +241,7 @@ class MainActivity : Activity() {
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
             description = "TODO、互动审核和工具箱消息提醒"
+            setShowBadge(true)
         }
         notificationManager.createNotificationChannel(channel)
     }
@@ -194,6 +268,9 @@ class MainActivity : Activity() {
                     .setContentTitle(title?.takeIf { it.isNotBlank() } ?: "学习工具箱")
                     .setContentText(message?.takeIf { it.isNotBlank() } ?: "你有一条新提醒")
                     .setStyle(Notification.BigTextStyle().bigText(message ?: "你有一条新提醒"))
+                    .setBadgeIconType(Notification.BADGE_ICON_SMALL)
+                    .setNumber(1)
+                    .setContentIntent(chatPendingIntent(this@MainActivity))
                     .setAutoCancel(true)
                     .build()
 
@@ -235,7 +312,23 @@ class MainActivity : Activity() {
     companion object {
         private const val LOCAL_BASE_URL = "https://local.study-toolbox/"
         private const val REQUEST_NOTIFICATIONS = 1001
+        private const val REQUEST_FILE_CHOOSER = 1002
+        private const val REQUEST_WEB_AUDIO = 1003
         private const val NOTIFICATION_CHANNEL_ID = "study_toolbox_default"
+
+        fun chatPendingIntent(context: Context): PendingIntent {
+            val intent = Intent(context, MainActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
+                data = Uri.parse(BuildConfig.TOOLBOX_URL + "#chatPanel")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            return PendingIntent.getActivity(
+                context,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
 
         private val LOCAL_HOME_HTML = """
             <!doctype html>

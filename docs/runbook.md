@@ -128,6 +128,8 @@ curl -X POST http://127.0.0.1:8000/api/micro-chat/messages/with-file \
   -F "upload=@/path/to/file.png"
 ```
 
+语音消息会以音频文件走同一个 `/api/micro-chat/messages/with-file` 接口；服务端会根据 `audio/*` MIME 自动写入 `message_type=audio`。
+
 ## systemd 常驻服务
 
 创建服务文件：
@@ -206,8 +208,20 @@ Android 构建：
 cd android
 $env:JAVA_HOME='C:\Ep\Environment\Java\jdk17'
 $env:Path="$env:JAVA_HOME\bin;$env:Path"
-& 'C:\Users\hp1080\.gradle\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\bin\gradle.bat' :app:assembleDebug
+& 'C:\Users\hp1080\.gradle\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\bin\gradle.bat' --no-daemon --max-workers=1 :app:assembleDebug
 ```
+
+当前 Windows 环境曾因本机分页文件/原生内存不足导致 Gradle daemon 崩溃，因此 `android/gradle.properties` 使用较保守的 `-Xmx1024m -XX:MaxMetaspaceSize=512m`。构建产物为：
+
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+2026-06-21+ APK 新能力：
+
+- 孩子端 WebView 可打开系统文件选择器上传图片、音频和文件。
+- 孩子端 WebView 可申请麦克风权限录制语音留言。
+- 原生 `MicroChatPollWorker` 会在系统允许时约 15 分钟轮询一次家长微聊消息，并用系统通知支撑桌面通知点。
 
 ## 常见问题
 
@@ -229,16 +243,21 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 
 ### 微聊没有系统通知或桌面小红点
 
-当前 APK 已留下 `StudyToolbox.showNotification(title, message)` 原生桥。网页收到非当前聊天页的新微聊时会调用它，Android 通知存在时，支持通知点的启动器通常会在 App 图标上显示小红点。若没有效果，检查：
+当前 APK 有两层提醒：网页运行时调用 `StudyToolbox.showNotification(title, message)` 原生桥；2026-06-21+ APK 还会用 `MicroChatPollWorker` 后台轮询家长消息。Android 通知存在时，支持通知点的启动器通常会在 App 图标上显示小红点。若没有效果，检查：
 
 1. 平板系统是否授予“学习工具箱”通知权限。
 2. 系统设置里该 App 的“通知点/桌面角标”是否开启。
-3. App 是否仍在前台或近期任务中运行；纯网页轮询无法保证锁屏、杀后台或孩子端禁用时段也持续执行。
-4. 后续若要接近 QQ/微信体验，需要原生常驻通道：推送/SSE/前台服务 + 固定通知 ID + PendingIntent 打开微聊页。
+3. 是否安装了 2026-06-21+ APK；旧 APK 没有 `MicroChatPollWorker`。
+4. WorkManager 是系统调度，最快也通常是 15 分钟级别，不保证锁屏、杀后台或孩子端禁用时段实时触达。
+5. 后续若要接近 QQ/微信体验，需要原生推送或长连接：FCM/厂商推送/SSE/WebSocket + 前台服务兜底。
 
 ### 家长端发送失败
 
 检查浏览器内填写的家长密钥是否等于服务端 `PARENT_CHAT_KEY`。
+
+### 孩子端图片或语音发不出去
+
+检查是否安装 2026-06-21+ APK。旧 APK 没有 WebView 文件选择器和麦克风权限桥，网页代码即使已更新，也无法在 App 内完成图片选择或语音录制。
 
 ### 粘贴 HTML 卡顿
 

@@ -12,11 +12,12 @@
 - 网页可远程更新，无需重新安装平板 APK。
 - 在 App WebView 内可检测 `window.StudyToolbox`，自动识别为孩子端。
 - 普通浏览器访问默认是家长端。
+- 2026-06-21 新版 APK 补齐原生文件选择、麦克风授权和微聊后台轮询通知；若 2026-06-22 之后拿不到平板，应优先维护网页和后端。
 - 工具箱网页包含：
   - 移动端优先的卡片首页和底部导航。
   - DeepSeek HTML 导入、保存、全屏运行。
   - 本地小任务清单。
-  - 微聊留言，包含类微信/QQ 的气泡聊天 UI、图片/文件发送和大图缩放预览。
+  - 微聊留言，包含类微信/QQ 的气泡聊天 UI、图片/文件/语音发送和大图缩放预览。
   - 亲子任务投递，家长可发布/重发任务，孩子可接受、退回或标记完成。
   - 学习收件箱，家长可远程投递 HTML，孩子端可全屏运行或保存到本地记录。
 
@@ -39,7 +40,7 @@ cd server
 
 ### 构建 APK
 
-只有拿到平板并需要更新原生能力时才需要重新打包：
+只有拿到平板并需要更新原生能力时才需要重新打包。当前装机窗口到 2026-06-22 前，建议安装 2026-06-21+ APK，以获得孩子端图片上传、语音录制和系统通知小红点基础能力：
 
 ```powershell
 cd android
@@ -47,6 +48,8 @@ $env:JAVA_HOME='C:\Ep\Environment\Java\jdk17'
 $env:Path="$env:JAVA_HOME\bin;$env:Path"
 & 'C:\Users\hp1080\.gradle\wrapper\dists\gradle-8.9-bin\90cnw93cvbtalezasaz0blq0a\gradle-8.9\bin\gradle.bat' :app:assembleDebug
 ```
+
+若 Windows 内存/分页文件不足导致 Gradle daemon 崩溃，保留 `android/gradle.properties` 中较保守的 `-Xmx1024m -XX:MaxMetaspaceSize=512m` 配置。
 
 安装产物：
 

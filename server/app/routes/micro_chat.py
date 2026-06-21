@@ -18,7 +18,7 @@ from app.models.micro_chat import MicroChatMessage
 router = APIRouter(prefix="/api/micro-chat", tags=["micro-chat"])
 
 SenderRole = Literal["parent", "child"]
-MessageType = Literal["text", "image", "file"]
+MessageType = Literal["text", "image", "audio", "file"]
 
 
 class CreateMessageRequest(BaseModel):
@@ -73,7 +73,11 @@ def _safe_upload_name(filename: str) -> str:
 
 
 def _message_type_for_mime(content_type: str | None) -> str:
-    return "image" if (content_type or "").startswith("image/") else "file"
+    if (content_type or "").startswith("image/"):
+        return "image"
+    if (content_type or "").startswith("audio/"):
+        return "audio"
+    return "file"
 
 
 def _message_out(message: MicroChatMessage) -> MessageOut:

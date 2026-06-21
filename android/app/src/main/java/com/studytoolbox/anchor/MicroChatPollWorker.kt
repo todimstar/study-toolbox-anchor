@@ -1,0 +1,134 @@
+package com.studytoolbox.anchor
+
+import android.Manifest
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.Worker
+import androidx.work.WorkerParameters
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.TimeUnit
+
+class MicroChatPollWorker(
+    context: Context,
+    workerParameters: WorkerParameters
+) : Worker(context, workerParameters) {
+
+    override fun doWork(): Result {
+        return try {
+            val latest = fetchLatestParentMessage() ?: return Result.success()
+            val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val lastSeen = prefs.getInt(KEY_LAST_SEEN_PARENT_ID, 0)
+            if (lastSeen == 0) {
+                prefs.edit().putInt(KEY_LAST_SEEN_PARENT_ID, latest.id).apply()
+                return Result.success()
+            }
+            if (latest.id > lastSeen) {
+                postNotification(latest)
+                prefs.edit().putInt(KEY_LAST_SEEN_PARENT_ID, latest.id).apply()
+            }
+            Result.success()
+        } catch (error: Exception) {
+            Result.retry()
+        }
+    }
+
+    private fun fetchLatestParentMessage(): LatestMessage? {
+        val url = URL("${BuildConfig.TOOLBOX_URL}api/micro-chat/messages?limit=20")
+        val connection = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 10_000
+            readTimeout = 10_000
+        }
+        connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+            val items = JSONObject(reader.readText()).optJSONArray("items") ?: return null
+            var latest: LatestMessage? = null
+            for (index in 0 until items.length()) {
+                val item = items.optJSONObject(index) ?: continue
+                if (item.optString("sender_role") != "parent") continue
+                val id = item.optInt("id")
+                if (latest == null || id > latest.id) {
+                    latest = LatestMessage(
+                        id = id,
+                        senderName = item.optString("sender_name", "高人"),
+                        body = item.optString("body").ifBlank {
+                            item.optString("attachment_name").ifBlank { "发来一条新消息" }
+                        }
+                    )
+                }
+            }
+            return latest
+        }
+    }
+
+    private fun postNotification(message: LatestMessage) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                "学习工具箱提醒",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "微聊和学习工具箱消息提醒"
+                setShowBadge(true)
+            }
+            manager.createNotificationChannel(channel)
+        }
+        val notification = Notification.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("微聊有新消息")
+            .setContentText("${message.senderName}：${message.body.take(80)}")
+            .setStyle(Notification.BigTextStyle().bigText("${message.senderName}：${message.body}"))
+            .setBadgeIconType(Notification.BADGE_ICON_SMALL)
+            .setNumber(1)
+            .setContentIntent(MainActivity.chatPendingIntent(applicationContext))
+            .setAutoCancel(true)
+            .build()
+        manager.notify(NATIVE_CHAT_NOTIFICATION_ID, notification)
+    }
+
+    private data class LatestMessage(
+        val id: Int,
+        val senderName: String,
+        val body: String
+    )
+
+    companion object {
+        private const val WORK_NAME = "study_toolbox_micro_chat_poll"
+        private const val PREFS_NAME = "study_toolbox_native_prefs"
+        private const val KEY_LAST_SEEN_PARENT_ID = "last_seen_parent_message_id"
+        private const val NOTIFICATION_CHANNEL_ID = "study_toolbox_default"
+        private const val NATIVE_CHAT_NOTIFICATION_ID = 2001
+
+        fun enqueue(context: Context) {
+            val request = PeriodicWorkRequestBuilder<MicroChatPollWorker>(15, TimeUnit.MINUTES)
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                )
+                .build()
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                WORK_NAME,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                request
+            )
+        }
+    }
+}
