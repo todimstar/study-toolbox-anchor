@@ -764,7 +764,7 @@
               <span id="chatStatus">准备同步</span>
             </div>
             <span class="tag blue" id="chatRolePill">queen端</span>
-            <span class="tag" style="background: #C4612F; color: white; font-weight: 700;">v2026.06.21.23</span>
+            <span class="tag" style="background: #C4612F; color: white; font-weight: 700;">v2026.06.21.24</span>
           </div>
           <details class="chat-settings" id="chatSettingsBox">
             <summary class="settings-toggle">
@@ -1544,7 +1544,10 @@
           markChatSeen(chatLastId);
         } else {
           unreadChatCount += newUnread;
-          if (!chatActive) notifyIncomingChat(newUnread, latestUnread);
+          // 优化：只要用户没在看底部的聊天，就发通知（包括在其他页面或在微聊但滚动到历史消息）
+          if (newUnread > 0 && latestUnread) {
+            notifyIncomingChat(newUnread, latestUnread);
+          }
         }
         updateChatBadges();
         if (!list.children.length) {
