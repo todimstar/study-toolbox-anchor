@@ -869,7 +869,7 @@
   </nav>
 
   <section id="runner" class="runner" aria-label="HTML 全屏运行器">
-    <iframe id="runnerFrame" title="HTML 全屏运行窗口" sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock"></iframe>
+    <iframe id="runnerFrame" title="HTML 全屏运行窗口" sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock allow-top-navigation-by-user-activation"></iframe>
     <div id="runnerControls" class="runner-controls">
       <div id="dragGrip" class="drag-grip" title="拖动控制条" aria-label="拖动控制条">拖</div>
       <button class="secondary" type="button" onclick="exitRunner()">退出运行</button>
@@ -1108,8 +1108,35 @@
       toast('草稿已清空');
     }
 
+    // 运行器 iframe 带 sandbox 且无 allow-same-origin，是不透明源，Cookie / localStorage
+    // 全部不可用，外部站点的人机验证页在里面必然死循环或白屏。
+    // 这里把指向外站的链接改成 target="_top"，让它跳出 iframe 落到主框架，
+    // 再由 App 壳的域名白名单决定放不放行。站内链接和无外链的小游戏一律不动。
+    function escapeExternalLinks(html) {
+      try {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        let changed = false;
+        doc.querySelectorAll('a[href]').forEach(anchor => {
+          const href = anchor.getAttribute('href') || '';
+          if (!/^https?:\/\//i.test(href)) return;
+          try {
+            if (new URL(href).origin === location.origin) return;
+          } catch (error) {
+            return;
+          }
+          anchor.setAttribute('target', '_top');
+          changed = true;
+        });
+        return changed ? '<!doctype html>\n' + doc.documentElement.outerHTML : html;
+      } catch (error) {
+        return html;
+      }
+    }
+
     function setRunner(html) {
-      document.getElementById('runnerFrame').srcdoc = html || '<p style="font-family:sans-serif;padding:24px">还没有内容</p>';
+      document.getElementById('runnerFrame').srcdoc = html
+        ? escapeExternalLinks(html)
+        : '<p style="font-family:sans-serif;padding:24px">还没有内容</p>';
       document.getElementById('runner').classList.add('active');
       document.body.style.overflow = 'hidden';
       if (window.StudyToolbox && StudyToolbox.setFullscreen) StudyToolbox.setFullscreen(true);

@@ -17,10 +17,14 @@ import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Message
 import android.provider.MediaStore
 import android.util.Base64
+import android.util.Log
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
@@ -31,6 +35,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import org.json.JSONObject
@@ -39,11 +44,16 @@ import java.io.File
 class MainActivity : Activity() {
     private lateinit var webView: WebView
     private lateinit var toolbar: LinearLayout
+    private lateinit var contentColumn: LinearLayout
+    private lateinit var contentRoot: FrameLayout
+    private var fullscreenView: View? = null
+    private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var pendingPermissionRequest: PermissionRequest? = null
     private var voiceRecorder: MediaRecorder? = null
     private var voiceOutputFile: File? = null
     private var voiceRecordStartedAt: Long = 0
+    private var defaultUserAgent: String = ""
     private val notificationManager by lazy {
         getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
@@ -62,23 +72,73 @@ class MainActivity : Activity() {
         webView = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            settings.cacheMode = WebSettings.LOAD_NO_CACHE  // 强制不使用缓存，确保加载最新版本
-            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             settings.allowFileAccess = false
             settings.allowContentAccess = false
 
             // 关键：启用 viewport 和响应式布局支持
             settings.useWideViewPort = true
             settings.loadWithOverviewMode = true
-            settings.layoutAlgorithm = WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING
-
-            // 禁用缩放，确保 CSS 像素与物理像素正确对应
-            settings.setSupportZoom(false)
-            settings.builtInZoomControls = false
             settings.displayZoomControls = false
+
+            // 外部站点常靠 window.open 拉播放页；交给 onCreateWindow 统一过白名单
+            settings.setSupportMultipleWindows(true)
+            settings.javaScriptCanOpenWindowsAutomatically = true
+            settings.mediaPlaybackRequiresUserGesture = false
+
+            defaultUserAgent = settings.userAgentString
+            // UA 只在这里定一次。WebView 一旦在导航过程中改 UA 会重新发起加载，
+            // 把正在进行的跳转打断（表现为跳到一半弹回工具箱）。
+            // 去掉 wv / Version 标记，否则 Cloudflare、cdndefend 一律按机器人处理。
+            settings.userAgentString = defaultUserAgent
+                .replace("; wv", "")
+                .replace(Regex("Version/\\d+(\\.\\d+)* "), "")
+            if (BuildConfig.DEBUG) {
+                WebView.setWebContentsDebuggingEnabled(true)
+            }
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                    return !isAllowedUrl(request.url)
+                    val url = request.url
+                    if (BuildConfig.DEBUG) {
+                        Log.d(WEB_LOG_TAG, "nav mainFrame=${request.isForMainFrame} $url")
+                    }
+                    if (isToolboxUrl(url)) {
+                        if (request.isForMainFrame) applyBrowsingProfile(url)
+                        return false
+                    }
+                    if (!isAllowedExternalUrl(url)) return true
+                    if (request.isForMainFrame) {
+                        applyBrowsingProfile(url)
+                        return false
+                    }
+                    // 只有"从工具箱页里往外跳"这一种子框架跳转需要接管：
+                    // 运行器 iframe 带 sandbox 且无 allow-same-origin，是不透明源，
+                    // Cookie / localStorage 全不可用，人机验证页在里面永远过不去。
+                    // 已经在外站内部时，子框架（播放器 iframe 等）必须原样放行。
+                    if (isOnToolboxPage()) {
+                        openInMainFrame(url)
+                        return true
+                    }
+                    return false
+                }
+
+                override fun onReceivedError(
+                    view: WebView,
+                    request: WebResourceRequest,
+                    error: android.webkit.WebResourceError
+                ) {
+                    if (BuildConfig.DEBUG) {
+                        Log.w(WEB_LOG_TAG, "load-error ${error.errorCode} ${error.description} <- ${request.url}")
+                    }
+                }
+
+                override fun onReceivedHttpError(
+                    view: WebView,
+                    request: WebResourceRequest,
+                    response: android.webkit.WebResourceResponse
+                ) {
+                    if (BuildConfig.DEBUG) {
+                        Log.w(WEB_LOG_TAG, "http-error ${response.statusCode} <- ${request.url}")
+                    }
                 }
             }
             webChromeClient = object : WebChromeClient() {
@@ -97,6 +157,62 @@ class MainActivity : Activity() {
                         filePathCallback.onReceiveValue(null)
                         false
                     }
+                }
+
+                override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+                    if (fullscreenView != null) {
+                        callback.onCustomViewHidden()
+                        return
+                    }
+                    fullscreenView = view
+                    fullscreenCallback = callback
+                    contentColumn.visibility = View.GONE
+                    contentRoot.addView(
+                        view,
+                        FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                    )
+                    setFullscreenMode(true)
+                }
+
+                override fun onHideCustomView() {
+                    val view = fullscreenView ?: return
+                    contentRoot.removeView(view)
+                    fullscreenView = null
+                    contentColumn.visibility = View.VISIBLE
+                    setFullscreenMode(false)
+                    fullscreenCallback?.onCustomViewHidden()
+                    fullscreenCallback = null
+                }
+
+                override fun onCreateWindow(
+                    view: WebView,
+                    isDialog: Boolean,
+                    isUserGesture: Boolean,
+                    resultMsg: Message
+                ): Boolean {
+                    // 用一个一次性 WebView 只为拿到目标地址，再回到主框架过白名单，
+                    // 顺带把弹窗广告挡在外面。
+                    val probe = WebView(this@MainActivity)
+                    probe.webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(v: WebView, request: WebResourceRequest): Boolean {
+                            openInMainFrame(request.url)
+                            v.post { v.destroy() }
+                            return true
+                        }
+                    }
+                    (resultMsg.obj as WebView.WebViewTransport).webView = probe
+                    resultMsg.sendToTarget()
+                    return true
+                }
+
+                override fun onConsoleMessage(message: android.webkit.ConsoleMessage): Boolean {
+                    if (BuildConfig.DEBUG) {
+                        Log.d(WEB_LOG_TAG, "console[${message.messageLevel()}] ${message.message()}")
+                    }
+                    return true
                 }
 
                 override fun onPermissionRequest(request: PermissionRequest) {
@@ -119,6 +235,13 @@ class MainActivity : Activity() {
             }
             addJavascriptInterface(ToolboxBridge(), "StudyToolbox")
         }
+
+        // 人机验证页普遍在第三方框架里种 Cookie，不开这个必然卡在验证循环
+        CookieManager.getInstance().apply {
+            setAcceptCookie(true)
+            setAcceptThirdPartyCookies(webView, true)
+        }
+        applyBrowsingProfile(toolboxUri)
 
         setContentView(createLayout())
         loadToolbox()
@@ -152,6 +275,10 @@ class MainActivity : Activity() {
     }
 
     override fun onBackPressed() {
+        if (fullscreenView != null) {
+            (webView.webChromeClient)?.onHideCustomView()
+            return
+        }
         if (webView.canGoBack()) {
             webView.goBack()
         } else {
@@ -160,10 +287,11 @@ class MainActivity : Activity() {
     }
 
     private fun createLayout(): View {
-        val root = LinearLayout(this).apply {
+        contentColumn = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.WHITE)
         }
+        val root = contentColumn
 
         toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -190,7 +318,18 @@ class MainActivity : Activity() {
             0,
             1f
         ))
-        return root
+        // 外层 FrameLayout 供 HTML5 视频全屏时挂 custom view
+        contentRoot = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            addView(
+                root,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
+        return contentRoot
     }
 
     private fun toolbarButton(text: String, onClick: () -> Unit): Button =
@@ -205,23 +344,78 @@ class MainActivity : Activity() {
 
     private fun loadToolbox() {
         exitFullscreenMode()
-        val target = intent?.data?.takeIf { isAllowedUrl(it) }?.toString() ?: BuildConfig.TOOLBOX_URL
+        val target = intent?.data?.takeIf { isToolboxUrl(it) }?.toString() ?: BuildConfig.TOOLBOX_URL
         if (toolboxUri.scheme == "https" && !toolboxUri.host.isNullOrBlank()) {
+            applyBrowsingProfile(Uri.parse(target))
             webView.loadUrl(target)
         } else {
             loadLocalHome()
         }
     }
 
-    private fun isAllowedUrl(uri: Uri): Boolean {
-        val scheme = uri.scheme ?: return false
-        if (scheme !in setOf("https")) return false
+    /** 白名单外站统一走主框架打开，避开运行器 iframe 的 sandbox 不透明源。 */
+    private fun openInMainFrame(uri: Uri) {
+        if (!isAllowedUrl(uri)) return
+        webView.post {
+            applyBrowsingProfile(uri)
+            webView.loadUrl(uri.toString())
+        }
+    }
+
+    /**
+     * 工具箱页和白名单外站需要两套完全不同的 WebView 策略：
+     * 工具箱要禁缓存拿最新版、禁混合内容、文本自动放大；
+     * 外站要允许 http 子资源（图床/m3u8）、正常缓存、原生布局、可缩放。
+     */
+    private fun applyBrowsingProfile(uri: Uri) {
+        val external = isAllowedExternalUrl(uri)
+        // 从运行器全屏跳到外站时工具栏还是隐藏的，孩子会没有回工具箱的入口
+        if (external && ::toolbar.isInitialized && fullscreenView == null) {
+            setFullscreenMode(false)
+        }
+        webView.settings.apply {
+            mixedContentMode = if (external) {
+                WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            } else {
+                WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            }
+            cacheMode = if (external) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_NO_CACHE
+            layoutAlgorithm = if (external) {
+                WebSettings.LayoutAlgorithm.NORMAL
+            } else {
+                WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING
+            }
+            setSupportZoom(external)
+            builtInZoomControls = external
+            displayZoomControls = false
+        }
+    }
+
+    private fun isToolboxUrl(uri: Uri): Boolean {
+        if (uri.scheme != "https") return false
         return uri.host.equals(toolboxUri.host, ignoreCase = true) ||
             uri.host.equals(Uri.parse(LOCAL_BASE_URL).host, ignoreCase = true)
     }
 
+    /** 主框架当前是否停在工具箱页（含离线页）。about:blank / 空地址按工具箱处理。 */
+    private fun isOnToolboxPage(): Boolean {
+        val current = webView.url ?: return true
+        if (current.startsWith("about:")) return true
+        return isToolboxUrl(Uri.parse(current))
+    }
+
+    /** 精确放行的外部站点。新增域名时记得同步 res/xml/network_security_config.xml。 */
+    private fun isAllowedExternalUrl(uri: Uri): Boolean {
+        if (uri.scheme !in setOf("http", "https")) return false
+        val host = uri.host?.lowercase() ?: return false
+        return EXTERNAL_ALLOWED_HOSTS.any { host == it || host.endsWith(".$it") }
+    }
+
+    private fun isAllowedUrl(uri: Uri): Boolean = isToolboxUrl(uri) || isAllowedExternalUrl(uri)
+
     private fun loadLocalHome() {
         exitFullscreenMode()
+        applyBrowsingProfile(Uri.parse(LOCAL_BASE_URL))
         webView.loadDataWithBaseURL(
             LOCAL_BASE_URL,
             LOCAL_HOME_HTML,
@@ -246,6 +440,9 @@ class MainActivity : Activity() {
     }
 
     private fun exitFullscreenMode() {
+        if (fullscreenView != null) {
+            (webView.webChromeClient)?.onHideCustomView()
+        }
         if (::toolbar.isInitialized) {
             setFullscreenMode(false)
         }
@@ -476,6 +673,17 @@ class MainActivity : Activity() {
 
     companion object {
         private const val LOCAL_BASE_URL = "https://local.study-toolbox/"
+
+        /**
+         * 精确放行的外部站点（含子域）。这是孩子端受控设备上唯一的白名单缺口，
+         * 加域名前先想清楚；同时要同步 res/xml/network_security_config.xml。
+         */
+        private val EXTERNAL_ALLOWED_HOSTS = listOf(
+            "ncat23.com",
+            "ncat21.com",  // ncat23.com 会 302 到 www.ncat21.com，不放行等于入口直接断掉
+            "kpkuang.fyi"
+        )
+
         private const val REQUEST_NOTIFICATIONS = 1001
         private const val REQUEST_FILE_CHOOSER = 1002
         private const val REQUEST_WEB_AUDIO = 1003
@@ -485,6 +693,7 @@ class MainActivity : Activity() {
         private const val CHAT_NOTIFICATION_ID = 2001
         private const val NATIVE_PREFS_NAME = "study_toolbox_native_prefs"
         private const val KEY_LAST_NOTIFIED_PARENT_ID = "last_notified_parent_message_id"
+        private const val WEB_LOG_TAG = "ToolboxWeb"
 
         fun chatPendingIntent(context: Context): PendingIntent {
             val intent = Intent(context, MainActivity::class.java).apply {
@@ -673,7 +882,7 @@ class MainActivity : Activity() {
                       <p>适合运行小游戏、交互教程、AI 生成的小网页。点击“抽屉”添加或选择记录。</p>
                     </div>
                   </div>
-                  <iframe id="preview" sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock"></iframe>
+                  <iframe id="preview" sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock allow-top-navigation-by-user-activation"></iframe>
                 </main>
               </div>
 
@@ -775,8 +984,28 @@ class MainActivity : Activity() {
                   setDraft('', '');
                   switchPanel('listPanel');
                 }
+                function escapeExternalLinks(html) {
+                  try {
+                    const doc = new DOMParser().parseFromString(html, 'text/html');
+                    let changed = false;
+                    doc.querySelectorAll('a[href]').forEach(anchor => {
+                      const href = anchor.getAttribute('href') || '';
+                      if (!/^https?:\/\//i.test(href)) return;
+                      try {
+                        if (new URL(href).origin === location.origin) return;
+                      } catch (error) {
+                        return;
+                      }
+                      anchor.setAttribute('target', '_top');
+                      changed = true;
+                    });
+                    return changed ? '<!doctype html>\n' + doc.documentElement.outerHTML : html;
+                  } catch (error) {
+                    return html;
+                  }
+                }
                 function setPreview(html) {
-                  preview.srcdoc = html || '<p style="font-family:sans-serif;padding:24px">还没有内容</p>';
+                  preview.srcdoc = html ? escapeExternalLinks(html) : '<p style="font-family:sans-serif;padding:24px">还没有内容</p>';
                   body.classList.add('running');
                   if (window.StudyToolbox && StudyToolbox.setFullscreen) StudyToolbox.setFullscreen(true);
                   closeDrawer();

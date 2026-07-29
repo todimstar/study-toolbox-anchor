@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  默认禁止明文流量；仅对白名单影视站点放行 http 子资源（图床、m3u8 常见走 http）。
+  新增站点时，这里和 MainActivity.EXTERNAL_ALLOWED_HOSTS 要同步维护。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">ncat23.com</domain>
+        <domain includeSubdomains="true">ncat21.com</domain>
+        <domain includeSubdomains="true">kpkuang.fyi</domain>
+    </domain-config>
+</network-security-config>
