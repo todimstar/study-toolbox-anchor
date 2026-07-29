@@ -29,3 +29,6 @@ android/local.properties
 # OS
 .DS_Store
 Thumbs.db
+
+# 调试产物
+.playwright-mcp/
