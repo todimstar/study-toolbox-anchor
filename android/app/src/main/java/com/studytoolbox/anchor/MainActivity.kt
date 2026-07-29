@@ -121,6 +121,14 @@ class MainActivity : Activity() {
                     return false
                 }
 
+                override fun onPageCommitVisible(view: WebView, url: String) {
+                    applyExternalViewport(url)
+                }
+
+                override fun onPageFinished(view: WebView, url: String) {
+                    applyExternalViewport(url)
+                }
+
                 override fun onReceivedError(
                     view: WebView,
                     request: WebResourceRequest,
@@ -389,6 +397,19 @@ class MainActivity : Activity() {
             builtInZoomControls = external
             displayZoomControls = false
         }
+    }
+
+    /**
+     * 孩子的平板是 1280x720，外站（网飞猫这类）在 1280 CSS 像素下左侧栏排不开，
+     * 排行榜入口被挤出可视区且滑不动。这里强制页面按 EXTERNAL_LAYOUT_WIDTH 布局，
+     * 再由 useWideViewPort + loadWithOverviewMode 整体等比缩放到屏宽。
+     * 1280x720 与 1600x900 同为 16:9，缩放后拿到的正好是 1600x900 的版式。
+     * 只对白名单外站生效，工具箱页保持原样。
+     */
+    private fun applyExternalViewport(url: String?) {
+        val uri = url?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: return
+        if (!isAllowedExternalUrl(uri)) return
+        webView.evaluateJavascript(EXTERNAL_VIEWPORT_JS, null)
     }
 
     private fun isToolboxUrl(uri: Uri): Boolean {
@@ -694,6 +715,33 @@ class MainActivity : Activity() {
         private const val NATIVE_PREFS_NAME = "study_toolbox_native_prefs"
         private const val KEY_LAST_NOTIFIED_PARENT_ID = "last_notified_parent_message_id"
         private const val WEB_LOG_TAG = "ToolboxWeb"
+
+        /** 外站强制的布局宽度（CSS 像素）。改这个等于改"按多宽的屏幕排版"。 */
+        private const val EXTERNAL_LAYOUT_WIDTH = 1600
+
+        /**
+         * 每次外站页面可见/加载完成后重设 viewport。站点自己可能带 width=device-width，
+         * 也可能压根没有 meta，两种情况都要盖掉，所以是"没有就建、有就改"。
+         * 内容没变时不写回，避免触发多余的重排。
+         */
+        private val EXTERNAL_VIEWPORT_JS = """
+            (function () {
+              try {
+                var want = 'width=$EXTERNAL_LAYOUT_WIDTH';
+                var head = document.head || document.getElementsByTagName('head')[0];
+                if (!head) return;
+                var meta = document.querySelector('meta[name="viewport"]');
+                if (!meta) {
+                  meta = document.createElement('meta');
+                  meta.setAttribute('name', 'viewport');
+                  head.appendChild(meta);
+                }
+                if (meta.getAttribute('content') !== want) {
+                  meta.setAttribute('content', want);
+                }
+              } catch (e) {}
+            })();
+        """.trimIndent()
 
         fun chatPendingIntent(context: Context): PendingIntent {
             val intent = Intent(context, MainActivity::class.java).apply {
