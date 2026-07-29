@@ -1349,14 +1349,14 @@
         const data = await res.json();
         const all = data.items || [];
         document.getElementById('remoteHtmlCountTag').textContent = all.length + ' 个';
-        list.innerHTML = all.length ? all.map(renderRemoteHtmlItem).join('') :
+        list.innerHTML = all.length ? all.map(item => renderRemoteHtmlItem(item, settings.role === 'parent')).join('') :
           '<div class="empty-state">' + (settings.role === 'parent' ? '还没有投递 HTML。' : '暂时没有收到 HTML。') + '</div>';
       } catch (error) {
         list.innerHTML = '<div class="empty-state">暂时连不上学习收件箱，稍后再试。</div>';
       }
     }
 
-    function renderRemoteHtmlItem(item) {
+    function renderRemoteHtmlItem(item, canRevoke) {
       return '<article class="item">' +
         '<div class="item-title-row">' +
         '<div><h3>' + escapeHtml(item.title) + '</h3><p class="meta">' + escapeHtml(item.created_by_name) + ' · ' + escapeHtml(formatTime(item.created_at)) + ' · ' + formatBytes(item.html) + '</p></div>' +
@@ -1366,8 +1366,23 @@
         '<div class="item-actions">' +
         '<button type="button" onclick="runRemoteHtml(' + item.id + ')">全屏运行</button>' +
         '<button class="secondary" type="button" onclick="saveRemoteHtml(' + item.id + ')">保存到本地</button>' +
+        (canRevoke ? '<button class="danger" type="button" onclick="revokeRemoteHtml(' + item.id + ')">撤销投递</button>' : '') +
         '</div>' +
         '</article>';
+    }
+
+    async function revokeRemoteHtml(id) {
+      const settings = chatSettings();
+      const key = remoteKey(settings);
+      if (!key) return toast('请先填写口令');
+      if (!confirm('撤销这次投递？queen 的收件箱里会一起消失。')) return;
+      const res = await fetch(remoteHtmlApi + '/' + id, {
+        method: 'DELETE',
+        headers: { 'X-Remote-Key': key }
+      });
+      if (!res.ok) return toast('撤销失败，稍后再试');
+      await loadRemoteHtml();
+      toast('已撤销投递');
     }
 
     async function remoteHtmlItems() {

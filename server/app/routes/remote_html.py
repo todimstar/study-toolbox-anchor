@@ -91,3 +91,18 @@ async def create_remote_html(
     await db.commit()
     await db.refresh(item)
     return _out(item)
+
+
+@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_remote_html(
+    item_id: int,
+    x_remote_key: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """家长撤销投递。收件箱里直接消失；孩子已保存到本地的副本不受影响。"""
+    _require_key("parent", x_remote_key)
+    item = await db.get(RemoteHtmlDelivery, item_id)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery not found")
+    await db.delete(item)
+    await db.commit()
