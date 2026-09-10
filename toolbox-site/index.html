@@ -290,6 +290,30 @@
       object-fit: cover;
       background: rgba(255,255,255,.5);
     }
+    /* 图集消息：多图网格（1 张大图 / 2-3 张首图通栏 / 4+ 张三列宫格） */
+    .chat-gallery {
+      display: grid;
+      gap: 4px;
+    }
+    .chat-gallery.two, .chat-gallery.three, .chat-gallery.many {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      width: min(62vw, 230px);
+    }
+    .chat-gallery.many { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .chat-gallery.three .image-thumb:first-child { grid-column: 1 / -1; }
+    .chat-gallery .image-thumb img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      background: rgba(255,255,255,.5);
+    }
+    .chat-gallery.three .image-thumb:first-child img { aspect-ratio: 16 / 10; }
+    .chat-gallery.one .image-thumb img {
+      width: min(46vw, 220px);
+      max-height: 180px;
+      aspect-ratio: auto;
+    }
     .image-thumb {
       display: block;
       padding: 0;
@@ -331,6 +355,41 @@
       font-size: 13px;
     }
     .attachment-preview.active { display: flex; }
+    .gallery-preview {
+      grid-column: 1 / -1;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px 10px;
+      border-radius: 14px;
+      background: var(--bg);
+    }
+    .gallery-preview.active { display: flex; }
+    .gallery-preview-strip {
+      display: flex;
+      width: 100%;
+      min-width: 0;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 2px;
+    }
+    .gallery-preview-strip img {
+      width: 52px;
+      height: 52px;
+      flex: none;
+      border-radius: 8px;
+      object-fit: cover;
+      background: rgba(255,255,255,.5);
+    }
+    .gallery-preview-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
     .attachment-actions {
       grid-column: 1 / -1;
       display: none;
@@ -481,10 +540,18 @@
       background: rgba(255,255,255,.18);
       color: #fff;
     }
+    .image-viewer-counter {
+      margin-right: auto;
+      align-self: center;
+      color: rgba(255,255,255,.85);
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+    }
+    .image-viewer-body { position: relative; min-height: 0; }
     .image-viewer-stage {
+      position: absolute;
+      inset: 0;
       overflow: auto;
-      display: block;
-      min-height: 0;
       text-align: center;
       overscroll-behavior: contain;
       touch-action: none;
@@ -498,6 +565,27 @@
       border-radius: 12px;
       transition: width .16s ease, max-width .16s ease, max-height .16s ease;
     }
+    .image-viewer-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: none;
+      font-size: 26px;
+      line-height: 1;
+      background: rgba(255,255,255,.24);
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(0,0,0,.3);
+      z-index: 3;
+    }
+    .image-viewer-nav.show { display: flex; }
+    .image-viewer-nav.prev { left: 2px; }
+    .image-viewer-nav.next { right: 2px; }
     .task-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
     .task-status { font-weight: 700; }
     .task-status.pending { color: var(--brand); }
@@ -764,7 +852,7 @@
               <span id="chatStatus">准备同步</span>
             </div>
             <span class="tag blue" id="chatRolePill">queen端</span>
-            <span class="tag" style="background: #C4612F; color: white; font-weight: 700;">v2026.06.21.24</span>
+            <span class="tag" style="background: #C4612F; color: white; font-weight: 700;">v2026.09.09</span>
           </div>
           <details class="chat-settings" id="chatSettingsBox">
             <summary class="settings-toggle">
@@ -790,6 +878,14 @@
           <button id="loadOlderChatButton" class="secondary chat-history-button hidden" type="button" onclick="loadOlderChatMessages()">加载更早消息</button>
           <div id="chatList" class="chat-list" aria-live="polite"></div>
           <div class="chat-composer">
+            <div id="galleryPreview" class="gallery-preview">
+              <div id="galleryPreviewStrip" class="gallery-preview-strip"></div>
+              <div class="gallery-preview-meta">
+                <button id="galleryAddMore" class="ghost" type="button" onclick="addMoreGalleryImages()">继续选图</button>
+                <span id="galleryPreviewInfo"></span>
+                <button class="ghost" type="button" onclick="clearGallerySelection()">移除</button>
+              </div>
+            </div>
             <div id="attachmentPreview" class="attachment-preview">
               <span id="attachmentName"></span>
               <button class="ghost" type="button" onclick="clearSelectedFile()">移除</button>
@@ -809,7 +905,7 @@
             </div>
             <button class="secondary" type="button" onclick="loadChatMessages(true)" aria-label="刷新微聊">刷新</button>
             <button class="secondary attach-button" type="button" onclick="toggleAttachmentPanel()" aria-label="选择图片或文件">+</button>
-            <input id="chatImageFile" class="hidden" type="file" accept="image/*" onchange="selectChatFile('chatImageFile')" />
+            <input id="chatImageFile" class="hidden" type="file" accept="image/*" multiple onchange="selectChatImages()" />
             <input id="chatFile" class="hidden" type="file" accept="audio/*,.html,.htm,.txt,.pdf,.zip" onchange="selectChatFile('chatFile')" />
             <button id="voiceButton" class="secondary voice-button" type="button" onclick="toggleVoicePanel()" aria-label="录制语音">🎙</button>
             <textarea id="chatBody" placeholder="写一条留言..." rows="1"></textarea>
@@ -880,13 +976,18 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="imageViewer" class="image-viewer">
     <div class="image-viewer-bar">
+      <span id="imageViewerCounter" class="image-viewer-counter"></span>
       <button type="button" onclick="zoomImageViewer(-0.5, event)">缩小</button>
       <button type="button" onclick="zoomImageViewer(0.5, event)">放大</button>
       <button type="button" onclick="resetImageViewerZoom()">复位</button>
       <button type="button" onclick="closeImageViewer()">关闭</button>
     </div>
-    <div class="image-viewer-stage" onclick="closeImageViewer()">
-      <img id="imageViewerImg" alt="图片预览" onclick="event.stopPropagation()" />
+    <div class="image-viewer-body">
+      <div class="image-viewer-stage" onclick="closeImageViewer()">
+        <img id="imageViewerImg" alt="图片预览" onclick="event.stopPropagation()" />
+      </div>
+      <button id="imageViewerPrev" class="image-viewer-nav prev" type="button" onclick="stepImageViewer(-1, event)" aria-label="上一张">‹</button>
+      <button id="imageViewerNext" class="image-viewer-nav next" type="button" onclick="stepImageViewer(1, event)" aria-label="下一张">›</button>
     </div>
   </div>
   <div id="voiceRecordingSheet" class="voice-recording-sheet" aria-live="polite">
@@ -911,8 +1012,11 @@
     let chatHasOlder = true;
     let toastTimer = null;
     let selectedChatFile = null;
+    let selectedImageFiles = [];
     let imageViewerScale = 1;
     let imageViewerPinchStart = null;
+    let imageViewerUrls = [];
+    let imageViewerIndex = 0;
     let unreadChatCount = 0;
     let lastNotifiedChatId = Number(localStorage.getItem('study_toolbox_last_notified_chat_id') || 0);
     let voiceRecorder = null;
@@ -988,8 +1092,8 @@
     function chatSettings() {
       const stored = read(chatSettingsKey)[0] || {};
       const role = isToolboxApp ? 'child' : 'parent';
-      const defaultName = role === 'child' ? 'child孩子' : '市外高人';
-      const defaultAvatar = role === 'child' ? 'child' : '高';
+      const defaultName = role === 'child' ? 'queen' : '市外高人';
+      const defaultAvatar = role === 'child' ? 'Q' : '高';
       const roleStore = stored[role] || {};
       if (isToolboxApp) {
         return {
@@ -1017,7 +1121,7 @@
       if (avatarInput) avatarInput.value = settings.avatar;
       document.getElementById('chatRolePill').textContent = settings.role === 'child' ? 'queen端' : '高人端';
       renderAvatar(document.getElementById('chatAvatar'), settings.avatar, settings.name);
-      document.getElementById('chatTitle').textContent = settings.role === 'child' ? '与高人闲谈' : '与child聊天';
+      document.getElementById('chatTitle').textContent = settings.role === 'child' ? '与高人闲谈' : '与queen聊天';
     }
 
     function saveChatSettings() {
@@ -1028,8 +1132,8 @@
         parentKey: document.getElementById('parentChatKey').value.trim()
       };
       settings[role] = {
-        name: document.getElementById('chatName').value.trim() || (role === 'parent' ? '高人' : 'child孩子'),
-        avatar: document.getElementById('chatAvatarInput').value.trim() || (role === 'parent' ? '家' : '孩')
+        name: document.getElementById('chatName').value.trim() || (role === 'parent' ? '高人' : 'queen'),
+        avatar: document.getElementById('chatAvatarInput').value.trim() || (role === 'parent' ? '家' : 'Q')
       };
       write(chatSettingsKey, [settings]);
       applyChatSettings();
@@ -1642,32 +1746,35 @@
       saveChatSettings();
       const settings = chatSettings();
       const body = document.getElementById('chatBody').value.trim();
-      if (!body && !selectedChatFile) return toast('先写一条留言或选择文件');
+      if (!body && !selectedChatFile && !selectedImageFiles.length) return toast('先写一条留言或选择图片/文件');
       const key = settings.role === 'parent' ? settings.parentKey : childChatKey;
       if (!key) return toast('请先填写口令');
       const sendButton = document.getElementById('chatSendButton');
       if (sendButton) sendButton.disabled = true;
       try {
-        const res = selectedChatFile
-          ? await sendFileMessage(settings, key, body)
-          : await fetch(chatApi, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-Chat-Key': key },
-              body: JSON.stringify({
-                sender_role: settings.role,
-                sender_name: settings.name,
-                sender_avatar: settings.avatar,
-                body
-              })
-            });
+        const res = selectedImageFiles.length
+          ? await sendGalleryMessage(settings, key, body)
+          : selectedChatFile
+            ? await sendFileMessage(settings, key, body)
+            : await fetch(chatApi, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Chat-Key': key },
+                body: JSON.stringify({
+                  sender_role: settings.role,
+                  sender_name: settings.name,
+                  sender_avatar: settings.avatar,
+                  body
+                })
+              });
         if (!res.ok) {
           const status = res.status;
           if (status === 403) throw new Error('口令错误，请检查设置');
-          if (status === 413) throw new Error('文件太大，请选择小于 20MB 的文件');
+          if (status === 413) throw new Error('文件太大：单张不超过 20MB，一次图集不超过 24MB');
           throw new Error('HTTP ' + status);
         }
         document.getElementById('chatBody').value = '';
         clearSelectedFile();
+        clearGallerySelection();
         await loadChatMessages(true);
         console.log('[消息] 发送成功');
         toast('已发送');
@@ -1688,6 +1795,21 @@
       form.append('body', body);
       form.append('upload', selectedChatFile);
       return fetch(chatApi + '/with-file', {
+        method: 'POST',
+        headers: { 'X-Chat-Key': key },
+        body: form
+      });
+    }
+
+    function sendGalleryMessage(settings, key, body) {
+      console.log('[图集] 准备上传', selectedImageFiles.length, '张图片,', body, '文本');
+      const form = new FormData();
+      form.append('sender_role', settings.role);
+      form.append('sender_name', settings.name);
+      form.append('sender_avatar', settings.avatar || '');
+      form.append('body', body);
+      selectedImageFiles.forEach(file => form.append('uploads', file));
+      return fetch(chatApi + '/with-images', {
         method: 'POST',
         headers: { 'X-Chat-Key': key },
         body: form
@@ -1855,6 +1977,7 @@
         return toast('没有录到声音');
       }
       console.log('[语音] 准备发送语音文件:', file.name, file.size, 'bytes', file.type);
+      if (selectedImageFiles.length) clearGallerySelection(); // 语音与图集互斥
       selectedChatFile = file;
       updateAttachmentPreview();
       try {
@@ -1922,6 +2045,7 @@
     }
 
     function selectChatFile(inputId) {
+      if (selectedImageFiles.length) clearGallerySelection(); // 单附件与图集互斥
       const input = document.getElementById(inputId || 'chatFile');
       selectedChatFile = input.files && input.files[0] ? input.files[0] : null;
       if (selectedChatFile) {
@@ -1934,6 +2058,73 @@
         }
       }
       updateAttachmentPreview();
+    }
+
+    function selectChatImages() {
+      const input = document.getElementById('chatImageFile');
+      const files = input.files ? Array.from(input.files) : [];
+      input.value = '';
+      if (!files.length) return;
+      if (selectedChatFile) { // 图集与单附件互斥
+        selectedChatFile = null;
+        document.getElementById('chatFile').value = '';
+        updateAttachmentPreview();
+      }
+      const picked = [];
+      let total = 0;
+      for (const file of files) {
+        if (file.type && !file.type.startsWith('image/')) {
+          toast('“' + file.name + '”不是图片，已跳过');
+          continue;
+        }
+        if (file.size > 20 * 1024 * 1024) {
+          toast('“' + file.name + '”超过 20MB，已跳过');
+          continue;
+        }
+        picked.push(file);
+        total += file.size;
+      }
+      if (!picked.length) return;
+      if (total > 24 * 1024 * 1024) {
+        toast('所选图片总大小超过 24MB，请分批发送');
+        return;
+      }
+      selectedImageFiles = selectedImageFiles.concat(picked).slice(0, 9);
+      if (selectedImageFiles.length > 9) toast('一次最多发送 9 张图片');
+      console.log('[图集] 已选择', selectedImageFiles.length, '张图片');
+      updateGalleryPreview();
+    }
+
+    function updateGalleryPreview() {
+      const box = document.getElementById('galleryPreview');
+      const strip = document.getElementById('galleryPreviewStrip');
+      const info = document.getElementById('galleryPreviewInfo');
+      const addMore = document.getElementById('galleryAddMore');
+      strip.querySelectorAll('img').forEach(img => URL.revokeObjectURL(img.src));
+      strip.innerHTML = selectedImageFiles.map(file =>
+        '<img src="' + URL.createObjectURL(file) + '" alt="待发送图片" />'
+      ).join('');
+      if (selectedImageFiles.length) {
+        const total = selectedImageFiles.reduce((sum, file) => sum + file.size, 0);
+        const full = selectedImageFiles.length >= 9;
+        info.textContent = selectedImageFiles.length + '/9 张 · ' + formatFileSize(total);
+        addMore.disabled = full;
+        addMore.textContent = full ? '已达 9 张上限' : '继续选图';
+        box.classList.add('active');
+      } else {
+        box.classList.remove('active');
+      }
+    }
+
+    function addMoreGalleryImages() {
+      if (selectedImageFiles.length >= 9) return toast('一次最多发送 9 张图片');
+      document.getElementById('chatImageFile').click();
+    }
+
+    function clearGallerySelection() {
+      selectedImageFiles = [];
+      updateGalleryPreview();
+      document.getElementById('chatImageFile').value = '';
     }
 
     function clearSelectedFile() {
@@ -1950,15 +2141,37 @@
       name.textContent = selectedChatFile ? selectedChatFile.name + ' · ' + formatFileSize(selectedChatFile.size) : '';
     }
 
+    // 原图 URL → 缩略图 URL：服务端上传时为图片额外落 xx.thumb.jpg（长边 480 的 JPEG）。
+    // 缩略图只在宫格/气泡里用，点开全屏仍取原图；旧消息没有缩略图时 onerror 回退原图。
+    function thumbUrl(originalUrl) {
+      if (!originalUrl) return originalUrl;
+      const dot = originalUrl.lastIndexOf('.');
+      const slash = originalUrl.lastIndexOf('/');
+      if (dot < 0 || dot < slash) return originalUrl; // 无扩展名或扩展名在路径里，不替换
+      return originalUrl.slice(0, dot) + '.thumb.jpg';
+    }
+
     function renderMessageContent(item) {
       const body = item.body ? '<div>' + escapeHtml(item.body) + '</div>' : '';
+      if (item.message_type === 'gallery' && item.attachment_urls && item.attachment_urls.length) {
+        const urls = item.attachment_urls;
+        const cls = urls.length === 1 ? 'one' : urls.length === 2 ? 'two' : urls.length === 3 ? 'three' : 'many';
+        const listJson = JSON.stringify(urls).replace(/"/g, '&quot;').replace(/</g, '\\u003c'); // URL 恒定无单引号，属性实体转义安全
+        const thumbs = urls.map((url, index) =>
+          '<button class="image-thumb" type="button" onclick="openImageViewer(' + listJson + ', ' + index + ')">' +
+          '<img src="' + escapeAttr(thumbUrl(url)) + '" alt="图片' + (index + 1) + '" loading="lazy" ' +
+          'onerror="this.onerror=null;this.src=\'' + escapeAttr(url) + '\';" /></button>'
+        ).join('');
+        return '<div class="chat-gallery ' + cls + '">' + thumbs + '</div>' + body;
+      }
       if (!item.attachment_url) return escapeHtml(item.body || '');
       const url = escapeAttr(item.attachment_url);
       const name = escapeHtml(item.attachment_name || '文件');
       if (item.message_type === 'image') {
         return '<div class="chat-attachment">' +
           '<button class="image-thumb" type="button" onclick="openImageViewer(\'' + url + '\')">' +
-          '<img src="' + url + '" alt="' + name + '" loading="lazy" /></button>' + body + '</div>';
+          '<img src="' + escapeAttr(thumbUrl(item.attachment_url)) + '" alt="' + name + '" loading="lazy" ' +
+          'onerror="this.onerror=null;this.src=\'' + url + '\';" /></button>' + body + '</div>';
       }
       if (item.message_type === 'audio') {
         const audioId = 'voice-' + item.id;
@@ -2013,28 +2226,51 @@
       node.innerHTML = renderAvatarHtml(value, name);
     }
 
-    function openImageViewer(url) {
-      const viewer = document.getElementById('imageViewer');
-      const image = document.getElementById('imageViewerImg');
-      const stage = document.querySelector('.image-viewer-stage');
-      image.src = url;
-      image.alt = '图片预览';
-      viewer.classList.add('active');
+    function openImageViewer(urls, index = 0) {
+      imageViewerUrls = Array.isArray(urls) ? urls : [urls];
+      imageViewerIndex = Math.min(Math.max(0, index || 0), imageViewerUrls.length - 1);
+      document.getElementById('imageViewer').classList.add('active');
       document.body.style.overflow = 'hidden';
+      showImageViewerImage();
+    }
+
+    function showImageViewerImage() {
+      const urls = imageViewerUrls;
+      const index = imageViewerIndex;
+      const image = document.getElementById('imageViewerImg');
+      image.src = urls[index];
+      image.alt = '图片预览 ' + (index + 1) + '/' + urls.length;
+      const counter = document.getElementById('imageViewerCounter');
+      if (counter) counter.textContent = urls.length > 1 ? (index + 1) + ' / ' + urls.length : '';
+      document.getElementById('imageViewerPrev').classList.toggle('show', urls.length > 1);
+      document.getElementById('imageViewerNext').classList.toggle('show', urls.length > 1);
       imageViewerScale = 1;
       imageViewerPointers.clear();
       imageViewerPinchStart = null;
       applyImageViewerZoom();
+      const stage = document.querySelector('.image-viewer-stage');
       requestAnimationFrame(() => {
         stage.scrollLeft = 0;
         stage.scrollTop = 0;
       });
     }
 
+    function stepImageViewer(delta, event) {
+      if (event) event.stopPropagation();
+      if (imageViewerUrls.length < 2) return;
+      imageViewerIndex = (imageViewerIndex + delta + imageViewerUrls.length) % imageViewerUrls.length;
+      showImageViewerImage();
+    }
+
     function closeImageViewer() {
       const viewer = document.getElementById('imageViewer');
       viewer.classList.remove('active');
       document.getElementById('imageViewerImg').removeAttribute('src');
+      const counter = document.getElementById('imageViewerCounter');
+      if (counter) counter.textContent = '';
+      document.getElementById('imageViewerPrev').classList.remove('show');
+      document.getElementById('imageViewerNext').classList.remove('show');
+      imageViewerUrls = [];
       document.body.style.overflow = '';
     }
 
@@ -2192,6 +2428,12 @@
     applyChatSettings();
     installRunnerDrag();
     installImageViewerGestures();
+    document.addEventListener('keydown', event => {
+      if (!document.getElementById('imageViewer').classList.contains('active')) return;
+      if (event.key === 'ArrowLeft') stepImageViewer(-1);
+      else if (event.key === 'ArrowRight') stepImageViewer(1);
+      else if (event.key === 'Escape') closeImageViewer();
+    });
     openInitialPanel();
     setInterval(() => loadChatMessages(false), 3000);
   </script>

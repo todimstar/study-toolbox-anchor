@@ -1,5 +1,7 @@
 """Micro chat message routes for the study toolbox."""
 
+import io
+import json
 import mimetypes
 import secrets
 from datetime import datetime, timezone
@@ -14,11 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.models.micro_chat import MicroChatMessage
+from app.jpush_util import send_jpush_notification
 
 router = APIRouter(prefix="/api/micro-chat", tags=["micro-chat"])
 
 SenderRole = Literal["parent", "child"]
-MessageType = Literal["text", "image", "audio", "file"]
+MessageType = Literal["text", "image", "audio", "file", "gallery"]
 
 
 class CreateMessageRequest(BaseModel):
@@ -41,6 +44,7 @@ class MessageOut(BaseModel):
     body: str
     message_type: str
     attachment_url: str | None
+    attachment_urls: list[str] | None = None  # gallery 图集 URL 列表
     attachment_name: str | None
     attachment_mime: str | None
     attachment_size: int | None
@@ -80,6 +84,54 @@ def _message_type_for_mime(content_type: str | None) -> str:
     return "file"
 
 
+def _looks_like_image(data: bytes) -> bool:
+    """按 magic bytes 校验真实图片内容，防止伪装成 image/* 的非图片文件混入图集。"""
+    if len(data) < 12:
+        return False
+    if data.startswith(b"\x89PNG\r\n\x1a\n") or data.startswith(b"\xff\xd8\xff") or data.startswith(b"GIF8"):
+        return True
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return True
+    return data[4:8] == b"ftyp"  # HEIC / HEIF / AVIF
+
+
+THUMB_MAX_EDGE = 480
+THUMB_JPEG_QUALITY = 82
+
+
+def _make_thumbnail(data: bytes) -> bytes | None:
+    """生成 JPEG 缩略图（长边 ≤THUMB_MAX_EDGE）。失败返回 None，调用方回退用原图。"""
+    try:
+        from PIL import Image, ImageOps
+
+        image = Image.open(io.BytesIO(data))
+        image = ImageOps.exif_transpose(image)
+        width, height = image.size
+        longest = max(width, height)
+        if longest <= THUMB_MAX_EDGE:
+            # 原图已经很小，仍转成 JPEG 统一走缩略图路径（避免 GIF/PNG 大色域）
+            pass
+        else:
+            scale = THUMB_MAX_EDGE / longest
+            image = image.resize(
+                (max(1, int(width * scale)), max(1, int(height * scale))),
+                Image.Resampling.LANCZOS,
+            )
+        if image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG", quality=THUMB_JPEG_QUALITY, optimize=True)
+        return buffer.getvalue()
+    except Exception:
+        return None
+
+
+def _thumb_name(original_name: str) -> str:
+    """原文件名 → 缩略图文件名：'xx.jpg' → 'xx.thumb.jpg'（前端据此拼缩略图加载路径）。"""
+    stem, _, suffix = original_name.rpartition(".")
+    return f"{stem}.thumb.jpg" if suffix else f"{original_name}.thumb.jpg"
+
+
 def _message_out(message: MicroChatMessage) -> MessageOut:
     return MessageOut(
         id=message.id,
@@ -89,11 +141,24 @@ def _message_out(message: MicroChatMessage) -> MessageOut:
         body=message.body,
         message_type=message.message_type or "text",
         attachment_url=message.attachment_url,
+        attachment_urls=_decode_urls(message.attachment_urls),
         attachment_name=message.attachment_name,
         attachment_mime=message.attachment_mime,
         attachment_size=message.attachment_size,
         created_at=_created_at_iso(message.created_at),
     )
+
+
+def _decode_urls(raw: str | None) -> list[str] | None:
+    if not raw:
+        return None
+    try:
+        urls = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if isinstance(urls, list) and urls and all(isinstance(url, str) for url in urls):
+        return urls
+    return None
 
 
 def _build_message(body: CreateMessageRequest) -> MicroChatMessage:
@@ -154,6 +219,16 @@ async def create_message(
     db.add(message)
     await db.commit()
     await db.refresh(message)
+
+    # 发送极光推送（异步，不阻塞响应）
+    # 如果家长发送消息，推送给孩子端
+    if body.sender_role == "parent":
+        title = "微聊有新消息"
+        content = f"{body.sender_name}：{body.body[:80]}"
+        # 不 await，让推送在后台执行（火忘模式）
+        import asyncio
+        asyncio.create_task(send_jpush_notification(title, content, body.sender_role))
+
     return _message_out(message)
 
 
@@ -183,6 +258,11 @@ async def create_message_with_file(
     target.write_bytes(data)
 
     content_type = upload.content_type or mimetypes.guess_type(original_name)[0] or "application/octet-stream"
+    # 图片消息同样落一份缩略图，加速孩子端加载
+    if content_type.startswith("image/"):
+        thumbnail = _make_thumbnail(data)
+        if thumbnail:
+            (upload_dir / _thumb_name(stored_name)).write_bytes(thumbnail)
     message_type = _message_type_for_mime(content_type)
     message = MicroChatMessage(
         sender_role=sender_role,
@@ -199,4 +279,72 @@ async def create_message_with_file(
     db.add(message)
     await db.commit()
     await db.refresh(message)
+    return _message_out(message)
+
+
+@router.post("/messages/with-images", response_model=MessageOut, status_code=status.HTTP_201_CREATED)
+async def create_message_with_images(
+    sender_role: SenderRole = Form(...),
+    sender_name: str = Form(..., min_length=1, max_length=32),
+    sender_avatar: str = Form(default="", max_length=64),
+    body: str = Form(default="", max_length=2000),
+    uploads: list[UploadFile] = File(...),
+    x_chat_key: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """一次上传 1-9 张图片，作为单条 gallery 图集消息（微信式相册）。"""
+    _require_chat_key(sender_role, x_chat_key)
+    if not 1 <= len(uploads) <= 9:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请选择 1-9 张图片")
+
+    upload_dir = Path(settings.UPLOAD_DIR) / "micro-chat"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    urls: list[str] = []
+    total_bytes = 0
+    for upload in uploads:
+        data = await upload.read()
+        if not data:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file")
+        if len(data) > settings.MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="单张图片过大")
+        original_name = Path(upload.filename or "image").name
+        content_type = upload.content_type or mimetypes.guess_type(original_name)[0] or ""
+        if not content_type.startswith("image/"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="仅支持发送图片文件")
+        if not _looks_like_image(data):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件内容不是有效图片")
+        total_bytes += len(data)
+        if total_bytes > settings.MAX_GALLERY_BYTES:
+            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="图集总大小超过限制")
+        stored_name = _safe_upload_name(original_name)
+        (upload_dir / stored_name).write_bytes(data)
+        # 额外落一份 JPEG 缩略图，孩子端缩略图/宫格秒加载，点开全屏仍取原图
+        thumbnail = _make_thumbnail(data)
+        if thumbnail:
+            (upload_dir / _thumb_name(stored_name)).write_bytes(thumbnail)
+        urls.append(f"/api/uploads/micro-chat/{stored_name}")
+
+    message = MicroChatMessage(
+        sender_role=sender_role,
+        sender_name=sender_name.strip(),
+        sender_avatar=sender_avatar.strip(),
+        body=body.strip(),
+        message_type="gallery",
+        attachment_urls=json.dumps(urls),
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(message)
+    await db.commit()
+    await db.refresh(message)
+
+    # 家长发送图集 → 推送给孩子端（火忘模式，不阻塞响应）
+    if sender_role == "parent":
+        import asyncio
+
+        summary = body.strip()[:80] or f"[图集] {len(urls)} 张图片"
+        asyncio.create_task(
+            send_jpush_notification("微聊有新消息", f"{sender_name.strip()}：{summary}", sender_role)
+        )
+
     return _message_out(message)
