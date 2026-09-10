@@ -12,6 +12,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.media.MediaRecorder
 import android.net.Uri
@@ -40,6 +42,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import org.json.JSONObject
 import java.io.File
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
     private lateinit var webView: WebView
@@ -53,6 +57,9 @@ class MainActivity : Activity() {
     private var voiceRecorder: MediaRecorder? = null
     private var voiceOutputFile: File? = null
     private var voiceRecordStartedAt: Long = 0
+    private var pickImagesRequestId: String = ""
+    private val pickImagesExecutor = Executors.newSingleThreadExecutor()
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var defaultUserAgent: String = ""
     private val notificationManager by lazy {
         getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -263,6 +270,10 @@ class MainActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_PICK_IMAGES) {
+            handlePickImagesResult(resultCode, data)
+            return
+        }
         if (requestCode != REQUEST_FILE_CHOOSER) return
         val result = parseFileChooserResult(resultCode, data)
         filePathCallback?.onReceiveValue(result)
@@ -554,6 +565,42 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun isNativeVoiceRecorderAvailable(): Boolean = true
 
+        /**
+         * 原生多图选择（回调式）：网页必须在用户手势的同步执行栈里调用。
+         * 返回 requestId；选图完成/取消后经 window.onToolboxImagesPicked 回调网页。
+         * 协议见仓库根目录《微聊原生增强-交接说明.md》§4.2。
+         */
+        @JavascriptInterface
+        fun pickImages(maxImages: Int): String {
+            val limit = maxImages.coerceIn(1, PICK_IMAGES_MAX)
+            val requestId = "pick-${System.currentTimeMillis()}"
+            runOnUiThread {
+                pickImagesRequestId = requestId
+                val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    // 系统 Photo Picker：零权限、原生多选 UI（ActivityNotFoundException 交由 catch 兜底）
+                    Intent(MediaStore.ACTION_PICK_IMAGES).apply {
+                        putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, limit)
+                    }
+                } else {
+                    // API 29–32 回退：多数国产相册支持 GET_CONTENT 多选（EXTRA_ALLOW_MULTIPLE + ClipData）
+                    Intent(Intent.ACTION_GET_CONTENT).apply {
+                        type = "image/*"
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                    }
+                }
+                try {
+                    startActivityForResult(intent, REQUEST_PICK_IMAGES)
+                } catch (error: Exception) {
+                    pickImagesRequestId = ""
+                    deliverPickedImages(
+                        JSONObject().put("ok", false).put("reason", "picker_unavailable")
+                    )
+                }
+            }
+            return requestId
+        }
+
         @JavascriptInterface
         fun startNativeVoiceRecording(): String {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
@@ -689,6 +736,149 @@ class MainActivity : Activity() {
             .put("reason", reason)
             .toString()
 
+    /** 解析系统选图结果，把 URI 列表交给后台线程读取/压缩，再回调网页。 */
+    private fun handlePickImagesResult(resultCode: Int, data: Intent?) {
+        val requestId = pickImagesRequestId
+        pickImagesRequestId = ""
+        if (requestId.isEmpty()) return
+
+        if (resultCode != RESULT_OK || data == null) {
+            deliverPickedImages(JSONObject().put("ok", false).put("reason", "cancelled"), requestId)
+            return
+        }
+
+        val uris = collectPickedUris(data)
+        if (uris.isEmpty()) {
+            deliverPickedImages(JSONObject().put("ok", false).put("reason", "cancelled"), requestId)
+            return
+        }
+
+        pickImagesExecutor.execute {
+            val images = org.json.JSONArray()
+            var failed = 0
+            for (uri in uris) {
+                try {
+                    readAndCompressImage(uri)?.let { images.put(it) } ?: run { failed++ }
+                } catch (_: Exception) {
+                    failed++
+                }
+            }
+            val payload = if (images.length() > 0) {
+                JSONObject().put("ok", true).put("images", images)
+            } else {
+                JSONObject().put("ok", false).put("reason", "read_failed")
+            }
+            mainHandler.post { deliverPickedImages(payload, requestId) }
+        }
+    }
+
+    private fun collectPickedUris(data: Intent): List<Uri> {
+        val result = ArrayList<Uri>()
+        data.clipData?.let { clip ->
+            for (index in 0 until clip.itemCount) {
+                clip.getItemAt(index).uri?.let { result.add(it) }
+            }
+        }
+        data.data?.let { if (result.isEmpty()) result.add(it) }
+        return result
+    }
+
+    /** 读取 URI 并压缩到长边 ≤2560、JPEG ~85，返回 { base64, fileName, mime } 或 null。 */
+    private fun readAndCompressImage(uri: Uri): JSONObject? {
+        val rawBytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+        // 先探尺寸，避免小图也被重编码（重编码会放大体积、丢失 EXIF 朝向尺寸）
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+        val longestEdge = maxOf(bounds.outWidth, bounds.outHeight)
+        val inSampleSize = if (longestEdge > PICK_IMAGE_MAX_EDGE) {
+            var size = 1
+            while (longestEdge / (size * 2) >= PICK_IMAGE_MAX_EDGE) size *= 2
+            size
+        } else {
+            1
+        }
+
+        val bitmap = BitmapFactory.Options()
+            .apply { this.inSampleSize = inSampleSize }
+            .let { opts -> BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, opts) }
+            ?: return null
+
+        // 若采样后依然超过目标长边，等比精确缩放一次，保证输出≤2560
+        val outWidth = bitmap.width
+        val outHeight = bitmap.height
+        val outLongest = maxOf(outWidth, outHeight)
+        val preview = if (outLongest > PICK_IMAGE_MAX_EDGE) {
+            val scale = PICK_IMAGE_MAX_EDGE.toFloat() / outLongest
+            val w = (outWidth * scale).toInt().coerceAtLeast(1)
+            val h = (outHeight * scale).toInt().coerceAtLeast(1)
+            Bitmap.createScaledBitmap(bitmap, w, h, true).also {
+                if (it !== bitmap) bitmap.recycle()
+            }
+        } else {
+            bitmap
+        }
+
+        val output = ByteArrayOutputStream()
+        preview.compress(Bitmap.CompressFormat.JPEG, PICK_IMAGE_JPEG_QUALITY, output)
+        preview.recycle()
+
+        val base64 = Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+        val mime = guessImageMimeType(uri)
+        return JSONObject()
+            .put("base64", base64)
+            .put("fileName", pickImageFileName(uri, mime))
+            .put("mime", mime)
+    }
+
+    private fun guessImageMimeType(uri: Uri): String {
+        val fromUri = contentResolver.getType(uri).orEmpty()
+        if (fromUri.startsWith("image/")) return fromUri
+        // 依据扩展名兜底（PNG/WebP 等 system picker 常返回准确 type）
+        return when (uri.lastPathSegment?.substringAfterLast('.', "")?.lowercase()) {
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "gif" -> "image/gif"
+            else -> "image/jpeg"
+        }
+    }
+
+    private fun pickImageFileName(uri: Uri, mime: String): String {
+        val ext = when (mime) {
+            "image/png" -> "png"
+            "image/webp" -> "webp"
+            "image/gif" -> "gif"
+            else -> "jpg"
+        }
+        // 取原始文件名并剥掉已有扩展名（queryDisplayName 常返回含后缀的完整名）
+        val rawName = queryDisplayName(uri)?.takeIf { it.isNotBlank() } ?: "IMG"
+        val baseName = rawName.substringBeforeLast('.', rawName).ifBlank { "IMG" }
+        return "${baseName}.$ext"
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        return try {
+            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 在主线程把选图结果经 evaluateJavascript 回调网页。 */
+    private fun deliverPickedImages(payload: JSONObject, requestId: String = "") {
+        val withId = if (requestId.isNotBlank() && !payload.has("requestId")) {
+            payload.put("requestId", requestId)
+        } else {
+            payload
+        }
+        val js = "window.onToolboxImagesPicked&&window.onToolboxImagesPicked(${withId})"
+        webView.evaluateJavascript(js, null)
+    }
+
     private val Int.dp: Int
         get() = (this * resources.displayMetrics.density).toInt()
 
@@ -709,6 +899,10 @@ class MainActivity : Activity() {
         private const val REQUEST_FILE_CHOOSER = 1002
         private const val REQUEST_WEB_AUDIO = 1003
         private const val REQUEST_NATIVE_AUDIO = 1004
+        private const val REQUEST_PICK_IMAGES = 1005
+        private const val PICK_IMAGES_MAX = 9
+        private const val PICK_IMAGE_MAX_EDGE = 2560
+        private const val PICK_IMAGE_JPEG_QUALITY = 85
         private const val NOTIFICATION_CHANNEL_ID = "study_toolbox_default"
         private const val CHAT_NOTIFICATION_CHANNEL_ID = "study_toolbox_chat_messages"
         private const val CHAT_NOTIFICATION_ID = 2001
