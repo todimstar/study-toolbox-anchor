@@ -748,6 +748,7 @@ class MainActivity : Activity() {
         }
 
         val uris = collectPickedUris(data)
+        Log.d("ToolboxPicked", "handlePickImagesResult: clipData=${data.clipData?.itemCount ?: 0}, data=${data.data}, uris=${uris.size}")
         if (uris.isEmpty()) {
             deliverPickedImages(JSONObject().put("ok", false).put("reason", "cancelled"), requestId)
             return

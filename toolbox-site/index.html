@@ -1832,6 +1832,7 @@
 
     function openImagePicker() {
       closeAttachmentPanel();
+      if (beginPickImagesNative()) return;
       document.getElementById('chatImageFile').click();
     }
 
@@ -2060,11 +2061,57 @@
       updateAttachmentPreview();
     }
 
+    let pickImagesRequestId = '';
+    let pickImagesTimer = null;
+
+    // 壳原生多图选择桥回调：壳侧选图完成后经此把图片（base64）送回网页
+    window.onToolboxImagesPicked = function onToolboxImagesPicked(payload) {
+      console.log('[图集] 原生选图回调:', payload && { ok: payload.ok, reason: payload.reason, count: payload.images && payload.images.length });
+      clearPickImagesTimer();
+      if (!payload || payload.requestId && payload.requestId !== pickImagesRequestId) return; // 陈旧回调，忽略
+      pickImagesRequestId = '';
+      if (!payload.ok || !Array.isArray(payload.images) || !payload.images.length) {
+        if (payload.reason !== 'cancelled') toast(payload.reason === 'permission_requested' ? '没有相册权限，请到系统设置里允许' : '没有选到图片');
+        return;
+      }
+      const files = payload.images
+        .map(image => {
+          try { return base64ToFile(image.base64, image.fileName || 'image.jpg', image.mime || 'image/jpeg'); }
+          catch (error) { console.error('[图集] 转换图片失败:', image, error); return null; }
+        })
+        .filter(Boolean);
+      acceptPickedImages(files);
+    };
+
+    function clearPickImagesTimer() {
+      if (pickImagesTimer) { clearTimeout(pickImagesTimer); pickImagesTimer = null; }
+    }
+
+    function beginPickImagesNative() {
+      if (!isToolboxApp || !window.StudyToolbox || !StudyToolbox.pickImages) return false;
+      const button = document.getElementById('galleryAddMore');
+      pickImagesRequestId = StudyToolbox.pickImages(9);
+      console.log('[图集] 调用原生多图桥, requestId=', pickImagesRequestId);
+      if (button) button.disabled = true; // 选图进行中，防重复发起
+      // 3 分钟兜底：只在选图器异常关闭且无回调时恢复按钮。
+      // 注意：不清空 pickImagesRequestId —— 用户翻相册可能远超 60 秒，
+      // 回调迟到仍应被接受（壳侧 requestId 是唯一权威）。
+      clearPickImagesTimer();
+      pickImagesTimer = setTimeout(() => {
+        if (button) button.disabled = false;
+      }, 180000);
+      return true;
+    }
+
     function selectChatImages() {
       const input = document.getElementById('chatImageFile');
       const files = input.files ? Array.from(input.files) : [];
       input.value = '';
       if (!files.length) return;
+      acceptPickedImages(files);
+    }
+
+    function acceptPickedImages(files) {
       if (selectedChatFile) { // 图集与单附件互斥
         selectedChatFile = null;
         document.getElementById('chatFile').value = '';
@@ -2118,6 +2165,7 @@
 
     function addMoreGalleryImages() {
       if (selectedImageFiles.length >= 9) return toast('一次最多发送 9 张图片');
+      if (beginPickImagesNative()) return;
       document.getElementById('chatImageFile').click();
     }
 
