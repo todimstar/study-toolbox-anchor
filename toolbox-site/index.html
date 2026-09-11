@@ -563,7 +563,9 @@
       max-height: 82dvh;
       object-fit: contain;
       border-radius: 12px;
-      transition: width .16s ease, max-width .16s ease, max-height .16s ease;
+      touch-action: none;
+      transform-origin: 0 0;
+      will-change: transform;
     }
     .image-viewer-nav {
       position: absolute;
@@ -1014,7 +1016,10 @@
     let selectedChatFile = null;
     let selectedImageFiles = [];
     let imageViewerScale = 1;
+    let imageViewerTranslateX = 0;
+    let imageViewerTranslateY = 0;
     let imageViewerPinchStart = null;
+    let imageViewerDidDrag = false;
     let imageViewerUrls = [];
     let imageViewerIndex = 0;
     let unreadChatCount = 0;
@@ -2293,6 +2298,8 @@
       document.getElementById('imageViewerPrev').classList.toggle('show', urls.length > 1);
       document.getElementById('imageViewerNext').classList.toggle('show', urls.length > 1);
       imageViewerScale = 1;
+      imageViewerTranslateX = 0;
+      imageViewerTranslateY = 0;
       imageViewerPointers.clear();
       imageViewerPinchStart = null;
       applyImageViewerZoom();
@@ -2325,71 +2332,103 @@
     function zoomImageViewer(delta, event) {
       if (event) event.stopPropagation();
       imageViewerScale = clampImageViewerScale(imageViewerScale + delta);
+      if (imageViewerScale <= 1) { imageViewerScale = 1; imageViewerTranslateX = 0; imageViewerTranslateY = 0; }
       applyImageViewerZoom();
     }
 
     function resetImageViewerZoom() {
       imageViewerScale = 1;
+      imageViewerTranslateX = 0;
+      imageViewerTranslateY = 0;
       applyImageViewerZoom();
     }
 
     function clampImageViewerScale(value) {
-      return Math.min(6, Math.max(0.5, value));
+      return Math.min(6, Math.max(1, value));
     }
 
     function applyImageViewerZoom() {
       const image = document.getElementById('imageViewerImg');
-      if (imageViewerScale === 1) {
-        image.style.width = '';
-        image.style.maxWidth = '96%';
-        image.style.maxHeight = '82dvh';
-      } else {
-        image.style.width = (imageViewerScale * 100) + '%';
-        image.style.maxWidth = 'none';
-        image.style.maxHeight = 'none';
-      }
+      image.style.transform = 'translate3d(' + imageViewerTranslateX + 'px,' + imageViewerTranslateY + 'px,0) scale(' + imageViewerScale + ')';
     }
 
     function installImageViewerGestures() {
       const stage = document.querySelector('.image-viewer-stage');
+      const image = document.getElementById('imageViewerImg');
       const distance = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const midpoint = (a, b) => ({ x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 });
+
+      // 图片自身不拦截 pointer，手势统一由 stage 处理
+      image.style.pointerEvents = 'none';
+
+      // 覆盖 stage 的点击关闭：拖动/捏合后抬起不应误关
+      stage.addEventListener('click', event => {
+        if (imageViewerDidDrag) { imageViewerDidDrag = false; event.stopPropagation(); event.preventDefault(); }
+      }, true);
+
       stage.addEventListener('wheel', event => {
         event.preventDefault();
         zoomImageViewer(event.deltaY < 0 ? 0.35 : -0.35, event);
       }, { passive: false });
+
       stage.addEventListener('dblclick', event => {
         event.preventDefault();
-        imageViewerScale = imageViewerScale > 1 ? 1 : 2.5;
-        applyImageViewerZoom();
+        resetImageViewerZoom();
       });
+
       stage.addEventListener('pointerdown', event => {
+        imageViewerDidDrag = false;
         imageViewerPointers.set(event.pointerId, event);
         stage.setPointerCapture(event.pointerId);
         if (imageViewerPointers.size === 2) {
           const points = [...imageViewerPointers.values()];
-          imageViewerPinchStart = { distance: distance(points[0], points[1]), scale: imageViewerScale };
+          imageViewerPinchStart = {
+            distance: distance(points[0], points[1]),
+            scale: imageViewerScale,
+            tx: imageViewerTranslateX,
+            ty: imageViewerTranslateY
+          };
         }
       });
+
       stage.addEventListener('pointermove', event => {
         if (!imageViewerPointers.has(event.pointerId)) return;
         const previous = imageViewerPointers.get(event.pointerId);
         imageViewerPointers.set(event.pointerId, event);
-        if (imageViewerPointers.size === 1 && imageViewerScale > 1 && previous) {
+
+        // 双指捏合：自由缩放，围绕两指中心
+        if (imageViewerPointers.size === 2 && imageViewerPinchStart) {
           event.preventDefault();
-          stage.scrollLeft -= event.clientX - previous.clientX;
-          stage.scrollTop -= event.clientY - previous.clientY;
+          imageViewerDidDrag = true;
+          const points = [...imageViewerPointers.values()];
+          const ratio = distance(points[0], points[1]) / imageViewerPinchStart.distance;
+          const nextScale = clampImageViewerScale(imageViewerPinchStart.scale * ratio);
+          const mid = midpoint(points[0], points[1]);
+          const rect = stage.getBoundingClientRect();
+          const fx = (imageViewerPinchStart.tx - rect.left) / imageViewerPinchStart.scale;
+          const fy = (imageViewerPinchStart.ty - rect.top) / imageViewerPinchStart.scale;
+          imageViewerScale = nextScale;
+          imageViewerTranslateX = mid.x - rect.left - fx * nextScale;
+          imageViewerTranslateY = mid.y - rect.top - fy * nextScale;
+          applyImageViewerZoom();
           return;
         }
-        if (imageViewerPointers.size !== 2 || !imageViewerPinchStart) return;
-        event.preventDefault();
-        const points = [...imageViewerPointers.values()];
-        const ratio = distance(points[0], points[1]) / imageViewerPinchStart.distance;
-        imageViewerScale = clampImageViewerScale(imageViewerPinchStart.scale * ratio);
-        applyImageViewerZoom();
+
+        // 单指拖动平移（放大状态下）
+        if (imageViewerPointers.size === 1 && imageViewerScale > 1 && previous) {
+          event.preventDefault();
+          imageViewerDidDrag = true;
+          imageViewerTranslateX += event.clientX - previous.clientX;
+          imageViewerTranslateY += event.clientY - previous.clientY;
+          applyImageViewerZoom();
+          return;
+        }
       });
+
       const clearPointer = event => {
         imageViewerPointers.delete(event.pointerId);
         if (imageViewerPointers.size < 2) imageViewerPinchStart = null;
+        if (imageViewerScale <= 1) { imageViewerTranslateX = 0; imageViewerTranslateY = 0; applyImageViewerZoom(); }
       };
       stage.addEventListener('pointerup', clearPointer);
       stage.addEventListener('pointercancel', clearPointer);
