@@ -207,8 +207,10 @@
     .todo-card.done h3 { text-decoration: line-through; color: var(--muted); }
 
     .chat-shell {
-      height: min(78dvh, 780px); min-height: 560px;
-      display: grid; grid-template-rows: auto auto auto 1fr auto;
+      /* 三重上限：78vh 常规 / 780px 桌面 / 100vh-200px 矮横屏(平板横屏/模拟器)不钻进底部导航。
+         旧 min-height:560px 会在矮视口压过 height，把输入栏顶出屏幕，已删除。 */
+      height: min(78vh, 780px, calc(100vh - 200px)); min-height: 0;
+      display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto;
       overflow: hidden; padding: 0; background: var(--surface-solid);
       border-radius: var(--radius-xl); box-shadow: var(--shadow);
     }
@@ -233,6 +235,7 @@
     .chat-list {
       overflow: auto; padding: 20px 16px; display: flex; flex-direction: column; gap: 16px;
       background: var(--surface-solid);
+      min-height: 0;  /* 1fr 行允许压缩，面板展开时不至于把输入栏挤出 overflow:hidden 的壳 */
     }
     .chat-message { max-width: 75%; display: grid; gap: 4px; }
     .chat-message.self { align-self: flex-end; }
@@ -337,14 +340,15 @@
     .file-card audio { width: min(62vw, 280px); }
 
     .chat-composer {
+      position: relative; /* 表情/贴纸面板以此为锚点向上浮起 */
       padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
       display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
       border-top: 1px solid var(--line);
       background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px);
       min-width: 0; max-width: 100%;  /* 不让内部超宽内容把整行 grid 撑出边界 */
     }
-    /* composer 是 flex 容器：横向面板要独占整行并约束宽度，否则会把行撑出滚动条 */
-    .chat-composer > .sticker-panel, .chat-composer > .emoji-panel,
+    /* composer 是 flex 容器：预览条等要独占整行并约束宽度，否则会把行撑出滚动条
+       （表情/贴纸面板已改为绝对定位浮层，不在此列） */
     .chat-composer > .attachment-preview, .chat-composer > .attachment-actions,
     .chat-composer > .voice-panel, .chat-composer > .gallery-preview {
       flex: 1 1 100%; min-width: 0; max-width: 100%;
@@ -516,10 +520,14 @@
       background: var(--soft-blue); color: var(--brand);
       border-color: var(--brand);
     }
-    /* QQ/微信式横排面板：横在输入框上方，内部横向滚动，按类型限高（3D 2 行 / 2D 与 emoji 4 行） */
+    /* QQ/微信式横排面板：绝对定位浮在输入栏上方（盖住消息列表），内部横向滚动，
+       按类型限高（3D 2 行 / 2D 与 emoji 4 行）。
+       旧的 in-flow 写法靠 max-height 顶住，矮视口(平板横屏 ~628px)下整行照样被顶出屏幕，
+       开面板的按钮看不见也关不掉；浮层从结构上消除这个位移 */
     .sticker-panel, .emoji-panel {
       display: none;
-      grid-column: 1 / -1;
+      position: absolute; left: 0; right: 0; bottom: calc(100% + 8px);
+      z-index: 5;
       background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.9));
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
@@ -534,7 +542,10 @@
       from { opacity: 0; transform: translateY(8px) scale(.98); }
       to { opacity: 1; transform: none; }
     }
-    .sticker-panel.active, .emoji-panel.active { display: flex; flex-direction: column; gap: 8px; }
+    .sticker-panel.active, .emoji-panel.active {
+      display: flex; flex-direction: column; gap: 8px;
+      overflow: hidden;
+    }
     .sticker-tabs { display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
     .sticker-tabs button {
       padding: 5px 14px; font-size: 13px; min-height: 30px; border-radius: 999px;
@@ -545,12 +556,13 @@
       background: linear-gradient(135deg, var(--brand), var(--accent)); color: #fff;
       box-shadow: 0 2px 8px rgba(0,122,255,.3);
     }
-    /* 横向滚动条：贴纸行 + emoji 行都是 flex 排开，行数由面板高度锁死 */
-    .sticker-row-scroll, .emoji-row-scroll { overflow-x: auto; overflow-y: hidden; flex: 1; scrollbar-width: thin; }
-    .sticker-row-scroll.big { height: calc(2 * 64px + 8px); }    /* 3D 大表情：两行 */
-    .sticker-row-scroll.small { height: calc(2 * 64px + 8px); }  /* 缺省两行，emoji/twemoji 走 grid 4 行 */
-    .emoji-panel .emoji-row-scroll { height: calc(4 * 40px + 3 * 4px); }  /* emoji 4 行 */
-    .sticker-row-scroll.small[data-rows="4"] { height: calc(4 * 64px + 3 * 8px); }  /* 2D 4 行 */
+    /* 横向滚动条：行高用 flex:0 0 auto + height/max-height 双保险锁死。
+       旧写法 flex:1 会让 flex-basis:0% 抢走显式 height，行高退化为内容 min-content，
+       "我的表情"加多后面板无限长高，把开面板的按钮挤出屏幕没法收起 */
+    .sticker-row-scroll, .emoji-row-scroll { overflow-x: auto; overflow-y: hidden; flex: 0 0 auto; min-height: 0; scrollbar-width: thin; }
+    .sticker-row-scroll.big { height: calc(2 * 64px + 8px); max-height: calc(2 * 64px + 8px); }          /* 3D 大表情：两行 */
+    .sticker-row-scroll.small { height: calc(4 * 64px + 3 * 8px); max-height: calc(4 * 64px + 3 * 8px); } /* 2D / 我的表情：四行 */
+    .emoji-panel .emoji-row-scroll { height: calc(4 * 40px + 3 * 4px); max-height: calc(4 * 40px + 3 * 4px); } /* emoji 4 行 */
     .sticker-row-scroll::-webkit-scrollbar, .emoji-row-scroll::-webkit-scrollbar { height: 6px; }
     .sticker-row-scroll::-webkit-scrollbar-thumb, .emoji-row-scroll::-webkit-scrollbar-thumb { background: var(--soft); border-radius: 3px; }
     /* 网格内部：用多列竖排网格铺出行（grid-auto-flow:column），横向展开无限宽 */
@@ -615,6 +627,7 @@
       width: 112px; height: 112px; object-fit: contain; display: block;
       filter: drop-shadow(0 2px 4px rgba(0,0,0,.12));
     }
+    .sticker-message.small img { width: 64px; height: 64px; }  /* 2D 经典表情：发出去就是小表情 */
     @keyframes sticker-bounce {
       0% { transform: scale(.3); opacity: 0; }
       60% { transform: scale(1.08); opacity: 1; }
@@ -973,7 +986,7 @@
               <span id="chatStatus">准备同步</span>
             </div>
             <span class="tag blue" id="chatRolePill">queen端</span>
-            <span class="tag" style="background: #C4612F; color: white; font-weight: 700;">v2026.09.13</span>
+            <span class="tag" style="background: #C4612F; color: white; font-weight: 700;">v2026.09.15</span>
           </div>
           <details class="chat-settings" id="chatSettingsBox">
             <summary class="settings-toggle">
@@ -1803,7 +1816,7 @@
       const activeTab = stickerActiveTab;
       const settings = chatSettings();
       const ownKey = settings.role === 'parent' ? settings.parentKey : childChatKey;
-      // 3D 大表情限 2 行；2D(twemoji)/我的表情限 4 行
+      // 3D(noto) 大表情限 2 行；2D(twemoji)/我的表情限 4 行。高度由 CSS .big/.small 锁死，横向滚动。
       const rows = activeTab === 'noto' ? 2 : 4;
       grid.classList.toggle('big', rows === 2);
       grid.classList.toggle('small', rows === 4);
@@ -1815,15 +1828,15 @@
         // 每张表情独立卡片，删除按钮逐张指定，不再嵌套于外层 button 做栈式误删
         const delButtons = stickerMine.map(s =>
           '<div class="sticker-item" data-sticker-id="' + s.id + '">' +
-          '<img src="' + escapeAttr(s.thumbnail_url || s.url) + '" onclick="sendSticker(\'' + escapeAttr(s.url) + '\')" alt="自定义表情" />' +
+          '<img src="' + escapeAttr(s.thumbnail_url || s.url) + '" decoding="sync" onclick="sendSticker(\'' + escapeAttr(s.url) + '\')" alt="自定义表情" />' +
           (ownKey ? '<button class="sticker-del" type="button" onclick="event.stopPropagation();deleteCustomSticker(' + s.id + ')" title="删除">×</button>' : '') +
           '</div>'
         );
         html = addBtn + delButtons.join('');
       } else {
-        const list = (stickerBuiltin[activeTab] || []).slice(0, 32);
+        const list = stickerBuiltin[activeTab] || [];
         html = list.map(s =>
-          '<button type="button" onclick="sendSticker(\'' + escapeAttr(s.url) + '\')"><img src="' + escapeAttr(s.url) + '" alt="' + escapeAttr(s.alt) + '" /></button>'
+          '<button type="button" onclick="sendSticker(\'' + escapeAttr(s.url) + '\')"><img src="' + escapeAttr(s.url) + '" alt="' + escapeAttr(s.alt) + '" decoding="sync" /></button>'
         ).join('');
       }
       grid.innerHTML = html;
@@ -2626,9 +2639,11 @@
         if (isSticker) {
           // 贴纸消息：微信式大表情，无气泡边框、可点开放大
           // jsdelivr 国内不稳，历史 CDN 贴纸按码点重写到自托管路径
-          const stickerSrc = normalizeStickerUrl(url);
-          return '<button class="sticker-message" type="button" onclick="openImageViewer(\'' + url + '\')">' +
-            '<img src="' + stickerSrc + '" alt="表情" loading="lazy" onerror="this.onerror=null;this.src=\'' + url + '\'" /></button>' + body;
+          // 2D(twemoji) 发出去是小表情；不要 loading=lazy——WebView 在列表外的格子经常不解码，看起来像空白
+          const stickerSrc = normalizeStickerUrl(item.attachment_url);
+          const is2d = /\/twemoji\//.test(stickerSrc) || /twemoji/.test(item.attachment_url || '');
+          return '<button class="sticker-message' + (is2d ? ' small' : '') + '" type="button" onclick="openImageViewer(\'' + escapeAttr(stickerSrc) + '\')">' +
+            '<img src="' + escapeAttr(stickerSrc) + '" alt="表情" decoding="async" /></button>' + body;
         }
         return '<div class="chat-attachment">' +
           '<button class="image-thumb" type="button" onclick="openImageViewer(\'' + url + '\')">' +
