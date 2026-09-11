@@ -22,8 +22,8 @@ android {
         applicationId = "com.studytoolbox.anchor"
         minSdk = 29  // Android 10
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.1.1-anchor"
+        versionCode = 3
+        versionName = "0.1.2-anchor"
         buildConfigField("String", "TOOLBOX_URL", "\"https://toolbox.zakuku.top/\"")
     }
 

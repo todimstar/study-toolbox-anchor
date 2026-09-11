@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
@@ -132,15 +133,20 @@ class MicroChatPollWorker(
         private const val NATIVE_CHAT_NOTIFICATION_ID = 2001
 
         fun enqueue(context: Context) {
-            val request = PeriodicWorkRequestBuilder<MicroChatPollWorker>(15, TimeUnit.MINUTES)
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .build()
-                )
-                .setInitialDelay(1, TimeUnit.MINUTES) // 首次延迟1分钟，加快初始轮询
+            val network = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            val manager = WorkManager.getInstance(context)
+            // 启动立刻跑一次：15 分钟周期最短也要等，孩子刚打开 App 不应空等
+            manager.enqueue(
+                OneTimeWorkRequestBuilder<MicroChatPollWorker>()
+                    .setConstraints(network)
+                    .build()
+            )
+            val request = PeriodicWorkRequestBuilder<MicroChatPollWorker>(15, TimeUnit.MINUTES)
+                .setConstraints(network)
+                .build()
+            manager.enqueueUniquePeriodicWork(
                 WORK_NAME,
                 ExistingPeriodicWorkPolicy.UPDATE,
                 request
