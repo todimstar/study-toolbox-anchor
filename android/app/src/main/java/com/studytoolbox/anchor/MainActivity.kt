@@ -383,7 +383,9 @@ class MainActivity : Activity() {
 
     /**
      * 工具箱页和白名单外站需要两套完全不同的 WebView 策略：
-     * 工具箱要禁缓存拿最新版、禁混合内容、文本自动放大；
+     * 工具箱禁混合内容 + 文本自动放大；缓存不再一刀切禁用，
+     * 改由 HTTP 头决定——HTML 走 no-cache 每次强校验拿最新版，
+     * 历史上传图片(文件名含时间戳+hex 不可变)走 immutable 落磁盘缓存。
      * 外站要允许 http 子资源（图床/m3u8）、正常缓存、原生布局、可缩放。
      */
     private fun applyBrowsingProfile(uri: Uri) {
@@ -398,7 +400,7 @@ class MainActivity : Activity() {
             } else {
                 WebSettings.MIXED_CONTENT_NEVER_ALLOW
             }
-            cacheMode = if (external) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_NO_CACHE
+            cacheMode = WebSettings.LOAD_DEFAULT
             layoutAlgorithm = if (external) {
                 WebSettings.LayoutAlgorithm.NORMAL
             } else {
