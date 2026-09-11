@@ -50,6 +50,7 @@ class MessageOut(BaseModel):
     attachment_size: int | None
     read_by_parent: int = 0
     read_by_child: int = 0
+    recalled: bool = False
     created_at: str
 
 
@@ -149,6 +150,7 @@ def _message_out(message: MicroChatMessage) -> MessageOut:
         attachment_size=message.attachment_size,
         read_by_parent=message.read_by_parent or 0,
         read_by_child=message.read_by_child or 0,
+        recalled=bool(message.recalled),
         created_at=_created_at_iso(message.created_at),
     )
 
@@ -238,6 +240,36 @@ async def mark_read(
             changed = True
     if changed:
         await db.commit()
+
+
+RECALL_WINDOW_SECONDS = 2 * 60  # 发出 2 分钟内可撤回（微信同款规则）
+
+
+@router.post("/{message_id}/recall", status_code=status.HTTP_204_NO_CONTENT)
+async def recall_message(
+    message_id: int,
+    sender_role: SenderRole = Query(...),
+    x_chat_key: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """发件人撤回自己的消息：2 分钟内、本人所发，标记 recalled=1（内容保留在库不外泄）。"""
+    _require_chat_key(sender_role, x_chat_key)
+    result = await db.execute(select(MicroChatMessage).where(MicroChatMessage.id == message_id))
+    message = result.scalar_one_or_none()
+    if message is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    if message.sender_role != sender_role:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="只能撤回自己发的消息")
+    if message.recalled:
+        return  # 幂等：重复撤回不报错
+    created_at = message.created_at
+    if isinstance(created_at, datetime) and created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    if created_at and (datetime.now(timezone.utc) - created_at).total_seconds() > RECALL_WINDOW_SECONDS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="超过 2 分钟，不能撤回了")
+    message.recalled = 1
+    message.recalled_at = datetime.now(timezone.utc)
+    await db.commit()
 
 
 @router.post("/messages", response_model=MessageOut, status_code=status.HTTP_201_CREATED)

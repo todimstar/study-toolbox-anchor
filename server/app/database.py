@@ -39,6 +39,8 @@ async def init_db() -> None:
                 "attachment_size": "ALTER TABLE micro_chat_messages ADD COLUMN attachment_size INTEGER",
                 "read_by_parent": "ALTER TABLE micro_chat_messages ADD COLUMN read_by_parent INTEGER NOT NULL DEFAULT 0",
                 "read_by_child": "ALTER TABLE micro_chat_messages ADD COLUMN read_by_child INTEGER NOT NULL DEFAULT 0",
+                "recalled": "ALTER TABLE micro_chat_messages ADD COLUMN recalled INTEGER NOT NULL DEFAULT 0",
+                "recalled_at": "ALTER TABLE micro_chat_messages ADD COLUMN recalled_at DATETIME",
             }
             for column, statement in migrations.items():
                 if column not in existing:

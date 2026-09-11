@@ -39,3 +39,7 @@ _cdp_*.py
 _ui_*.jpg
 # 极光密钥所在文件，禁止入库
 server/app/jpush_util.py
+# 本地构建 wrapper（本仓库未纳入，构建产自本机）
+android/gradlew
+android/gradlew.bat
+android/gradle/wrapper/

@@ -21,4 +21,6 @@ class MicroChatMessage(Base):
     attachment_size = Column(Integer, nullable=True)
     read_by_parent = Column(Integer, nullable=False, default=0)  # 家长是否已读
     read_by_child = Column(Integer, nullable=False, default=0)   # 孩子是否已读
+    recalled = Column(Integer, nullable=False, default=0)        # 是否已撤回
+    recalled_at = Column(DateTime, nullable=True)                # 撤回时间
     created_at = Column(DateTime, server_default=func.now(), index=True)
