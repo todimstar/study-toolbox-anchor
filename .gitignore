@@ -33,3 +33,7 @@ Thumbs.db
 
 # 调试产物
 .playwright-mcp/
+
+# CDP 调试脚本与截图（本地验收工具，不入库）
+_cdp_*.py
+_ui_*.jpg
