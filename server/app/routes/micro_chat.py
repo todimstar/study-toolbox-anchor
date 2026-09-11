@@ -21,14 +21,14 @@ from app.jpush_util import send_jpush_notification
 router = APIRouter(prefix="/api/micro-chat", tags=["micro-chat"])
 
 SenderRole = Literal["parent", "child"]
-MessageType = Literal["text", "image", "audio", "file", "gallery"]
+MessageType = Literal["text", "image", "audio", "file", "gallery", "sticker"]
 
 
 class CreateMessageRequest(BaseModel):
     sender_role: SenderRole
     sender_name: str = Field(min_length=1, max_length=32)
     sender_avatar: str = Field(default="", max_length=64)
-    body: str = Field(min_length=1, max_length=2000)
+    body: str = Field(default="", max_length=2000)
     message_type: MessageType = "text"
     attachment_url: str | None = None
     attachment_name: str | None = None
@@ -238,12 +238,17 @@ async def mark_read(
             changed = True
     if changed:
         await db.commit()
+
+
+@router.post("/messages", response_model=MessageOut, status_code=status.HTTP_201_CREATED)
 async def create_message(
     body: CreateMessageRequest,
     x_chat_key: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ):
     _require_chat_key(body.sender_role, x_chat_key)
+    if body.message_type == "text" and not body.body.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Text body is required")
     if body.message_type != "text" and not body.attachment_url:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Attachment is required")
     message = _build_message(body)
