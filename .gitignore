@@ -37,3 +37,5 @@ Thumbs.db
 # CDP 调试脚本与截图（本地验收工具，不入库）
 _cdp_*.py
 _ui_*.jpg
+# 极光密钥所在文件，禁止入库
+server/app/jpush_util.py
