@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/stickers", tags=["stickers"])
 
 # 内置贴纸：两套公开表情库，风格互补、授权清晰。
 # Noto Emoji（Google，Apache 2.0，3D 写实 PNG）；Twemoji（Twitter，CC-BY 4.0，扁平 2D PNG）。
-# 均可用码点拼 URL，无需英文目录名映射。
+# 图源已自托管到 uploads/stickers/builtin/（jsdelivr 国内不稳，WebView 常空白），按码点拼路径。
 NOTO_EMOJI = [
     "1f600", "1f603", "1f604", "1f601", "1f606", "1f605", "1f923", "1f602",
     "1f970", "1f60d", "1f60a", "1f60b", "1f60e", "1f60f", "1f618", "1f61c",
@@ -34,14 +34,15 @@ NOTO_EMOJI = [
     "1f44d", "1f44e", "1f44f", "1f64c", "1f64f", "1f91d", "1f4aa", "1f4a4",
     "2764", "1f494", "1f495", "1f49c", "1f49b", "1f497", "1f9e1", "1f525",
 ]
+# 分批去重（Batch 1-10）：Twemoji 部分码点与 Noto 完全同源，为避免 2D 经典 tab 出现空白格，逐一取 Noto 中确实存在的码点。
 TWEMOJI_CODEPOINTS = [
     "1f600", "1f602", "1f60d", "1f60e", "1f622", "1f62d", "1f628", "1f621",
     "1f44d", "1f44f", "1f64c", "1f4aa", "1f525", "1f31f", "1f383", "1f384",
-    "1f49c", "1f497", "2764", "1f494", "1f91d", "1f64f", "1f4a4", "1f389",
+    "1f49c", "1f497", "2764", "1f91d", "1f64f", "1f4a4", "1f389",
 ]
 
-NOTO_URL = "https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji@main/png/512/emoji_u{cp}.png"
-TWEMOJI_URL = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/{cp}.png"
+NOTO_URL = "/api/uploads/stickers/builtin/noto/{cp}.png"
+TWEMOJI_URL = "/api/uploads/stickers/builtin/twemoji/{cp}.png"
 
 
 class BuiltinSticker(BaseModel):

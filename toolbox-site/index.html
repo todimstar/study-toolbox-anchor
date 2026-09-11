@@ -338,10 +338,11 @@
 
     .chat-composer {
       padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-      display: grid; grid-template-columns: auto auto auto 1fr auto; gap: 10px;
-      align-items: end; border-top: 1px solid var(--line);
+      display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+      border-top: 1px solid var(--line);
       background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px);
     }
+    .chat-composer .refresh-btn { margin-left: auto; }
     .attachment-preview {
       grid-column: 1 / -1;
       display: none;
@@ -497,9 +498,11 @@
     .chat-message.other .voice-message { background: rgba(255,255,255,.78); }
     .voice-message span { font-size: 12px; opacity: .75; }
     .chat-composer textarea {
-      min-height: 38px; max-height: 120px; resize: none; margin: 0;
-      border-radius: 18px; padding: 8px 12px; background: var(--surface-solid);
+      flex: 1 1 180px; min-width: 120px; min-height: 42px; max-height: 120px; resize: none; margin: 0;
+      border: 1px solid var(--soft); border-radius: 21px; padding: 10px 16px;
+      background: var(--surface-solid); line-height: 22px;
     }
+    .chat-composer textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
     .chat-composer button { border-radius: 18px; font-weight: 600; padding: 8px 14px; min-height: 38px; }
     .emoji-btn, .sticker-btn { font-size: 20px; padding: 6px 10px; min-width: 42px; line-height: 1; }
     .emoji-btn.active, .sticker-btn.active {
@@ -545,7 +548,13 @@
     .sticker-grid button:active { transform: scale(.9); box-shadow: 0 2px 8px rgba(0,0,0,.12); }
     .sticker-grid img { width: 44px; height: 44px; object-fit: contain; }
     .sticker-grid .sticker-add { font-size: 24px; color: var(--muted); }
-    .sticker-grid .sticker-item { border-radius: 12px; }
+    .sticker-grid .sticker-item {
+      position: relative; padding: 4px; min-height: 56px; aspect-ratio: 1; background: var(--surface-solid);
+      border: 1px solid var(--soft); border-radius: 12px; display: grid; place-items: center;
+      overflow: visible; cursor: pointer;
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .sticker-grid .sticker-item:active { transform: scale(.9); }
     .sticker-grid .sticker-del {
       position: absolute; top: -5px; right: -5px; width: 20px; height: 20px;
       min-height: 20px; padding: 0; font-size: 12px; border-radius: 50%;
@@ -928,7 +937,7 @@
               <span id="chatStatus">准备同步</span>
             </div>
             <span class="tag blue" id="chatRolePill">queen端</span>
-            <span class="tag" style="background: #C4612F; color: white; font-weight: 700;">v2026.09.11</span>
+            <span class="tag" style="background: #C4612F; color: white; font-weight: 700;">v2026.09.12</span>
           </div>
           <details class="chat-settings" id="chatSettingsBox">
             <summary class="settings-toggle">
@@ -990,16 +999,16 @@
                 onpointerleave="moveVoicePress(event)">按住说话</button>
               <button class="secondary voice-cancel-button" type="button" onclick="cancelVoicePress()">取消</button>
             </div>
-            <button class="secondary" type="button" onclick="loadChatMessages(true)" aria-label="刷新微聊">刷新</button>
             <button class="secondary attach-button emoji-btn" type="button" onclick="toggleEmojiPanel()" aria-label="选择表情">😀</button>
             <button class="secondary attach-button sticker-btn" type="button" onclick="toggleStickerPanel()" aria-label="选择贴纸">🖼</button>
             <button class="secondary attach-button" type="button" onclick="toggleAttachmentPanel()" aria-label="选择图片或文件">+</button>
+            <button id="voiceButton" class="secondary voice-button" type="button" onclick="toggleVoicePanel()" aria-label="录制语音">🎙</button>
             <input id="chatImageFile" class="hidden" type="file" accept="image/*" multiple onchange="selectChatImages()" />
             <input id="stickerUploadFile" class="hidden" type="file" accept="image/*" multiple onchange="selectStickerUpload()" />
             <input id="chatFile" class="hidden" type="file" accept="audio/*,.html,.htm,.txt,.pdf,.zip" onchange="selectChatFile('chatFile')" />
-            <button id="voiceButton" class="secondary voice-button" type="button" onclick="toggleVoicePanel()" aria-label="录制语音">🎙</button>
             <textarea id="chatBody" placeholder="写一条留言..." rows="1"></textarea>
             <button id="chatSendButton" type="button" onclick="sendChatMessage()">发送</button>
+            <button class="secondary refresh-btn" type="button" onclick="loadChatMessages(true)" aria-label="刷新微聊" title="刷新">🔄</button>
           </div>
         </div>
       </section>
@@ -1684,20 +1693,30 @@
     const EMOJI_LIST = ['😀','😁','😂','🤣','😊','😇','🙂','😉','😍','🥰','😘','😋','😜','🤪','😎','🤩','🥳','😏','😢','😭','😤','😡','🤯','😱','🥺','😴','🤔','🤗','🙄','😬','😷','🤒','👍','👎','👏','🙏','💪','🤝','❤️','💔','✨','🎉','🎁','🌟','⭐','🔥','🍀','🌈','⭐'];
 
     function toggleEmojiPanel() {
-      closeStickerPanels();
       const panel = document.getElementById('emojiPanel');
-      const willOpen = !panel.classList.contains('active');
+      const wasOpen = panel.classList.contains('active');
+      closeStickerPanels();  // 收起贴纸面板/附件/语音面板，并同步按钮态
+      const willOpen = !wasOpen;
       panel.classList.toggle('active', willOpen);
       document.querySelector('.emoji-btn')?.classList.toggle('active', willOpen);
       if (willOpen) { renderEmojiGrid(); closeAttachmentPanel(); closeVoicePanel(); }
     }
     function toggleStickerPanel() {
-      closeStickerPanels();
       const panel = document.getElementById('stickerPanel');
-      const willOpen = !panel.classList.contains('active');
+      const wasOpen = panel.classList.contains('active');
+      closeStickerPanels();  // 收起表情面板/附件/语音面板，并同步按钮态
+      const willOpen = !wasOpen;
       panel.classList.toggle('active', willOpen);
       document.querySelector('.sticker-btn')?.classList.toggle('active', willOpen);
       if (willOpen) { renderStickerGrid(); closeAttachmentPanel(); closeVoicePanel(); }
+    }
+    function closeEmojiPanelOnly() {
+      document.getElementById('emojiPanel').classList.remove('active');
+      document.querySelector('.emoji-btn')?.classList.remove('active');
+    }
+    function closeStickerPanelOnly() {
+      document.getElementById('stickerPanel').classList.remove('active');
+      document.querySelector('.sticker-btn')?.classList.remove('active');
     }
 
     function renderEmojiGrid() {
@@ -1752,11 +1771,12 @@
 
       if (activeTab === 'mine') {
         const addBtn = '<button class="sticker-add" type="button" onclick="addCustomSticker()" title="上传图片做表情">➕</button>';
+        // 每张表情独立卡片，删除按钮逐张指定，不再嵌套于外层 button 做栈式误删
         const delButtons = stickerMine.map(s =>
-          '<button class="sticker-item" type="button">' +
+          '<div class="sticker-item" data-sticker-id="' + s.id + '">' +
           '<img src="' + escapeAttr(s.thumbnail_url || s.url) + '" loading="lazy" onclick="sendSticker(\'' + escapeAttr(s.url) + '\')" alt="自定义表情" />' +
-          (ownKey ? '<button class="sticker-del" type="button" onclick="deleteCustomSticker(' + s.id + ')" title="删除">×</button>' : '') +
-          '</button>'
+          (ownKey ? '<button class="sticker-del" type="button" onclick="event.stopPropagation();deleteCustomSticker(' + s.id + ')" title="删除">×</button>' : '') +
+          '</div>'
         );
         html = addBtn + delButtons.join('');
       } else {
@@ -1788,7 +1808,7 @@
         })
       }).then(res => {
         if (!res.ok) { toast('表情发送失败 HTTP ' + res.status); return; }
-        closeStickerPanels();
+        closeStickerPanelOnly();  // 仅收起贴纸面板，保留已打开的表情/输入焦点
         loadChatMessages(true);
       }).catch(e => { console.error('[贴纸] 发送失败', e); toast('表情发送失败'); });
     }
@@ -1889,6 +1909,11 @@
       const body = document.getElementById('chatBody').value;
       localStorage.setItem(chatDraftKeyForRole(), body);
     }
+    function autoGrowChatBody() {
+      const body = document.getElementById('chatBody');
+      body.style.height = 'auto';
+      body.style.height = Math.min(body.scrollHeight, 120) + 'px';  // 随内容长高，封顶 120px
+    }
     function restoreChatDraft() {
       const body = localStorage.getItem(chatDraftKeyForRole()) || '';
       if (body) document.getElementById('chatBody').value = body;
@@ -1896,7 +1921,8 @@
     function clearChatDraft() { localStorage.removeItem(chatDraftKeyForRole()); }
     function initChatDraft() {
       restoreChatDraft();
-      document.getElementById('chatBody').addEventListener('input', saveChatDraft);
+      autoGrowChatBody();
+      document.getElementById('chatBody').addEventListener('input', () => { saveChatDraft(); autoGrowChatBody(); });
     }
 
     function renderChatMessage(item, settings) {
@@ -2095,6 +2121,7 @@
           throw new Error('HTTP ' + status);
         }
         document.getElementById('chatBody').value = '';
+        autoGrowChatBody();
         clearSelectedFile();
         clearGallerySelection();
         await loadChatMessages(true);
@@ -2526,6 +2553,16 @@
       return originalUrl.slice(0, dot) + '.thumb.jpg';
     }
 
+    // jsdelivr CDN 贴纸 URL → 自托管同码点路径（国内加载稳）
+    function normalizeStickerUrl(url) {
+      const m = url.match(/emoji_u([0-9a-f]+)\.png/) || url.match(/72x72\/([0-9a-f]+)\.png/);
+      if (!m) return url;
+      const cp = m[1];
+      if (url.includes('noto-emoji')) return '/api/uploads/stickers/builtin/noto/' + cp + '.png';
+      if (url.includes('twemoji')) return '/api/uploads/stickers/builtin/twemoji/' + cp + '.png';
+      return url;
+    }
+
     function renderMessageContent(item) {
       const body = item.body ? '<div>' + escapeHtml(item.body) + '</div>' : '';
       if (item.message_type === 'gallery' && item.attachment_urls && item.attachment_urls.length) {
@@ -2546,8 +2583,10 @@
         const isSticker = item.message_type === 'sticker' || item.attachment_name === '表情';
         if (isSticker) {
           // 贴纸消息：微信式大表情，无气泡边框、可点开放大
+          // jsdelivr 国内不稳，历史 CDN 贴纸按码点重写到自托管路径
+          const stickerSrc = normalizeStickerUrl(url);
           return '<button class="sticker-message" type="button" onclick="openImageViewer(\'' + url + '\')">' +
-            '<img src="' + url + '" alt="表情" loading="lazy" /></button>' + body;
+            '<img src="' + stickerSrc + '" alt="表情" loading="lazy" onerror="this.onerror=null;this.src=\'' + url + '\'" /></button>' + body;
         }
         return '<div class="chat-attachment">' +
           '<button class="image-thumb" type="button" onclick="openImageViewer(\'' + url + '\')">' +
