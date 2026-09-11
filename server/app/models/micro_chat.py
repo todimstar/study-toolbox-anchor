@@ -15,6 +15,7 @@ class MicroChatMessage(Base):
     body = Column(Text, nullable=False)
     message_type = Column(String(16), nullable=False, default="text")
     attachment_url = Column(Text, nullable=True)
+    attachment_urls = Column(Text, nullable=True)  # gallery 图集：JSON 数组字符串
     attachment_name = Column(String(255), nullable=True)
     attachment_mime = Column(String(128), nullable=True)
     attachment_size = Column(Integer, nullable=True)

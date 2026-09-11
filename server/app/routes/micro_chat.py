@@ -220,14 +220,19 @@ async def create_message(
     await db.commit()
     await db.refresh(message)
 
-    # 发送极光推送（异步，不阻塞响应）
-    # 如果家长发送消息，推送给孩子端
+    # 发送推送（异步，不阻塞响应）
+    # 家长发消息 → 极光推给孩子端；孩子发消息 → 企微机器人提醒家长微信
     if body.sender_role == "parent":
         title = "微聊有新消息"
         content = f"{body.sender_name}：{body.body[:80]}"
         # 不 await，让推送在后台执行（火忘模式）
         import asyncio
         asyncio.create_task(send_jpush_notification(title, content, body.sender_role))
+    elif body.sender_role == "child":
+        import asyncio
+        from app.wecom_bot import notify_parent_new_child_message
+        summary = body.body.strip()[:80] or "[空消息]"
+        asyncio.create_task(notify_parent_new_child_message(body.sender_name.strip(), summary))
 
     return _message_out(message)
 
@@ -279,6 +284,15 @@ async def create_message_with_file(
     db.add(message)
     await db.commit()
     await db.refresh(message)
+
+    # 孩子发文件/图片 → 提醒家长微信
+    if sender_role == "child":
+        import asyncio
+        from app.wecom_bot import notify_parent_new_child_message
+        kind = "图片" if message_type == "image" else ("语音" if message_type == "audio" else "文件")
+        summary = body.strip()[:40] or f"[{kind}]"
+        asyncio.create_task(notify_parent_new_child_message(sender_name.strip(), summary))
+
     return _message_out(message)
 
 
@@ -338,7 +352,7 @@ async def create_message_with_images(
     await db.commit()
     await db.refresh(message)
 
-    # 家长发送图集 → 推送给孩子端（火忘模式，不阻塞响应）
+    # 家长发图集 → 极光推给孩子端；孩子发图集 → 企微机器人提醒家长微信（火忘模式）
     if sender_role == "parent":
         import asyncio
 
@@ -346,5 +360,11 @@ async def create_message_with_images(
         asyncio.create_task(
             send_jpush_notification("微聊有新消息", f"{sender_name.strip()}：{summary}", sender_role)
         )
+    elif sender_role == "child":
+        import asyncio
+        from app.wecom_bot import notify_parent_new_child_message
+
+        summary = body.strip()[:40] or f"[图集] {len(urls)} 张图片"
+        asyncio.create_task(notify_parent_new_child_message(sender_name.strip(), summary))
 
     return _message_out(message)
