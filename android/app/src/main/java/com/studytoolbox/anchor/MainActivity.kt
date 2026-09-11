@@ -538,7 +538,7 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun getAppVersion(): String = "0.1.0-anchor"
+        fun getAppVersion(): String = "0.1.1-anchor"
 
         @JavascriptInterface
         fun setFullscreen(enabled: Boolean) {

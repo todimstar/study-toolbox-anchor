@@ -19,6 +19,7 @@ android/local.properties
 *.apk
 *.aab
 *.jks
+android/keystore.properties
 
 # IDE
 .idea/

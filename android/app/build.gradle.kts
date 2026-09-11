@@ -1,6 +1,17 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+// 签名配置：读取 keystore.properties（本机文件，不进 git）。
+// 没有 keystore.properties 时 release 用 debug 签名兜底，
+// 方便临时编译验证，但正式发布必须有它。
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) load(FileInputStream(f))
 }
 
 android {
@@ -11,8 +22,8 @@ android {
         applicationId = "com.studytoolbox.anchor"
         minSdk = 29  // Android 10
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0-anchor"
+        versionCode = 2
+        versionName = "0.1.1-anchor"
         buildConfigField("String", "TOOLBOX_URL", "\"https://toolbox.zakuku.top/\"")
     }
 
@@ -23,6 +34,16 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (keystoreProperties.isNotEmpty()) {
+                signingConfig = signingConfigs.create("release") {
+                    storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                    storePassword = keystoreProperties.getProperty("storePassword")
+                    keyAlias = keystoreProperties.getProperty("keyAlias")
+                    keyPassword = keystoreProperties.getProperty("keyPassword")
+                }
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
     }
 
