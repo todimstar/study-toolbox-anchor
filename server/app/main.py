@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import init_db
-from app.routes import micro_chat, remote_html, study_tasks
+from app.routes import micro_chat, remote_html, study_tasks, stickers
 
 # Force UTF-8 for console logging on Windows
 handler = logging.StreamHandler(sys.stdout)
@@ -58,6 +58,7 @@ app.add_middleware(
 app.include_router(micro_chat.router)
 app.include_router(remote_html.router)
 app.include_router(study_tasks.router)
+app.include_router(stickers.router)
 
 upload_root = Path(settings.UPLOAD_DIR)
 upload_root.mkdir(parents=True, exist_ok=True)

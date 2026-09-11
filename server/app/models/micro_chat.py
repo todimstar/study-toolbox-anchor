@@ -19,4 +19,6 @@ class MicroChatMessage(Base):
     attachment_name = Column(String(255), nullable=True)
     attachment_mime = Column(String(128), nullable=True)
     attachment_size = Column(Integer, nullable=True)
+    read_by_parent = Column(Integer, nullable=False, default=0)  # 家长是否已读
+    read_by_child = Column(Integer, nullable=False, default=0)   # 孩子是否已读
     created_at = Column(DateTime, server_default=func.now(), index=True)

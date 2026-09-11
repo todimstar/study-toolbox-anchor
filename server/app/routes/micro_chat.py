@@ -48,6 +48,8 @@ class MessageOut(BaseModel):
     attachment_name: str | None
     attachment_mime: str | None
     attachment_size: int | None
+    read_by_parent: int = 0
+    read_by_child: int = 0
     created_at: str
 
 
@@ -145,6 +147,8 @@ def _message_out(message: MicroChatMessage) -> MessageOut:
         attachment_name=message.attachment_name,
         attachment_mime=message.attachment_mime,
         attachment_size=message.attachment_size,
+        read_by_parent=message.read_by_parent or 0,
+        read_by_child=message.read_by_child or 0,
         created_at=_created_at_iso(message.created_at),
     )
 
@@ -206,7 +210,34 @@ async def list_messages(
     return MessageListResponse(items=[_message_out(message) for message in messages])
 
 
-@router.post("/messages", response_model=MessageOut, status_code=status.HTTP_201_CREATED)
+@router.post("/read", status_code=status.HTTP_204_NO_CONTENT)
+async def mark_read(
+    up_to_id: int = Query(..., ge=1),
+    reader_role: SenderRole = Query(...),
+    x_chat_key: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """把 ≤up_to_id 的、由对方发的消息标记为「已读」。
+    reader_role=parent 时置 read_by_parent=1（孩子发的消息被家长读）；
+    reader_role=child 时置 read_by_child=1（家长发的消息被孩子读）。"""
+    _require_chat_key(reader_role, x_chat_key)
+    result = await db.execute(
+        select(MicroChatMessage).where(MicroChatMessage.id <= up_to_id)
+    )
+    messages = result.scalars().all()
+    column = (
+        MicroChatMessage.read_by_parent if reader_role == "parent" else MicroChatMessage.read_by_child
+    )
+    changed = False
+    for message in messages:
+        # 只标记对方发的消息（自己发的消息不需要"自己已读"回执）
+        if message.sender_role == reader_role:
+            continue
+        if not getattr(message, column.key):
+            setattr(message, column.key, 1)
+            changed = True
+    if changed:
+        await db.commit()
 async def create_message(
     body: CreateMessageRequest,
     x_chat_key: str | None = Header(default=None),
