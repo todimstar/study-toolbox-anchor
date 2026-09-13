@@ -4,11 +4,13 @@ import io
 import json
 import mimetypes
 import secrets
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+from time import monotonic
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +36,7 @@ class CreateMessageRequest(BaseModel):
     attachment_name: str | None = None
     attachment_mime: str | None = None
     attachment_size: int | None = None
+    reply_to_id: int | None = None
 
 
 class MessageOut(BaseModel):
@@ -51,6 +54,10 @@ class MessageOut(BaseModel):
     read_by_parent: int = 0
     read_by_child: int = 0
     recalled: bool = False
+    reply_to_id: int | None = None
+    quote_sender: str | None = None
+    quote_body: str | None = None
+    quote_type: str | None = None
     created_at: str
 
 
@@ -58,10 +65,63 @@ class MessageListResponse(BaseModel):
     items: list[MessageOut]
 
 
+def _key_matches(given: str | None, expected: str) -> bool:
+    if not given or not expected or len(given) != len(expected):
+        return False
+    return secrets.compare_digest(given, expected)
+
+
 def _require_chat_key(sender_role: str, x_chat_key: str | None) -> None:
     expected = settings.CHILD_CHAT_KEY if sender_role == "child" else settings.PARENT_CHAT_KEY
-    if not expected or x_chat_key != expected:
+    if not _key_matches(x_chat_key, expected):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid chat key")
+
+
+def _require_any_chat_key(x_chat_key: str | None) -> str:
+    """读接口：家长或孩子口令均可。返回命中的角色。"""
+    if _key_matches(x_chat_key, settings.PARENT_CHAT_KEY):
+        return "parent"
+    if _key_matches(x_chat_key, settings.CHILD_CHAT_KEY):
+        return "child"
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid chat key")
+
+
+class PairRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=64)
+
+
+class PairResponse(BaseModel):
+    chat_key: str
+
+
+_pair_attempts: dict[str, list[float]] = defaultdict(list)
+_PAIR_WINDOW_SECONDS = 600.0
+_PAIR_MAX_ATTEMPTS = 8
+
+
+def _pair_client_ip(request: Request) -> str:
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    return forwarded or (request.client.host if request.client else "unknown")
+
+
+def _pair_rate_limited(ip: str) -> bool:
+    now = monotonic()
+    window = [stamp for stamp in _pair_attempts[ip] if now - stamp < _PAIR_WINDOW_SECONDS]
+    _pair_attempts[ip] = window
+    if len(window) >= _PAIR_MAX_ATTEMPTS:
+        return True
+    window.append(now)
+    return False
+
+
+@router.post("/pair", response_model=PairResponse)
+async def pair_child_device(body: PairRequest, request: Request) -> PairResponse:
+    """孩子端 APK 首启：用安装码换取 CHILD_CHAT_KEY。这是唯一不带口令的孩子写接口。"""
+    if _pair_rate_limited(_pair_client_ip(request)):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many attempts")
+    if not _key_matches(body.code.strip(), settings.CHILD_PAIR_CODE):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid pair code")
+    return PairResponse(chat_key=settings.CHILD_CHAT_KEY)
 
 
 def _created_at_iso(created_at: datetime | None) -> str:
@@ -151,8 +211,45 @@ def _message_out(message: MicroChatMessage) -> MessageOut:
         read_by_parent=message.read_by_parent or 0,
         read_by_child=message.read_by_child or 0,
         recalled=bool(message.recalled),
+        reply_to_id=message.reply_to_id,
+        quote_sender=message.quote_sender,
+        quote_body=message.quote_body,
+        quote_type=message.quote_type,
         created_at=_created_at_iso(message.created_at),
     )
+
+
+def _quote_summary(message: MicroChatMessage) -> tuple[str, str, str]:
+    sender = (message.sender_name or "")[:32]
+    mtype = message.message_type or "text"
+    if message.recalled:
+        body = "[已撤回]"
+    elif mtype == "image":
+        body = "[图片]"
+    elif mtype == "gallery":
+        body = "[图集]"
+    elif mtype == "audio":
+        body = "[语音]"
+    elif mtype == "sticker":
+        body = "[表情]"
+    elif mtype == "file":
+        body = (message.attachment_name or "")[:40] or "[文件]"
+    else:
+        body = (message.body or "").strip()[:80] or "[消息]"
+    return sender, body, mtype
+
+
+async def _snapshot_quote(
+    db: AsyncSession, reply_to_id: int | None
+) -> tuple[int | None, str | None, str | None, str | None]:
+    if not reply_to_id:
+        return None, None, None, None
+    result = await db.execute(select(MicroChatMessage).where(MicroChatMessage.id == reply_to_id))
+    original = result.scalar_one_or_none()
+    if original is None:
+        return None, None, None, None
+    sender, body, mtype = _quote_summary(original)
+    return original.id, sender, body, mtype
 
 
 def _decode_urls(raw: str | None) -> list[str] | None:
@@ -167,7 +264,13 @@ def _decode_urls(raw: str | None) -> list[str] | None:
     return None
 
 
-def _build_message(body: CreateMessageRequest) -> MicroChatMessage:
+def _build_message(
+    body: CreateMessageRequest,
+    reply_to_id: int | None = None,
+    quote_sender: str | None = None,
+    quote_body: str | None = None,
+    quote_type: str | None = None,
+) -> MicroChatMessage:
     return MicroChatMessage(
         sender_role=body.sender_role,
         sender_name=body.sender_name.strip(),
@@ -178,6 +281,10 @@ def _build_message(body: CreateMessageRequest) -> MicroChatMessage:
         attachment_name=body.attachment_name,
         attachment_mime=body.attachment_mime,
         attachment_size=body.attachment_size,
+        reply_to_id=reply_to_id,
+        quote_sender=quote_sender,
+        quote_body=quote_body,
+        quote_type=quote_type,
         created_at=datetime.now(timezone.utc),
     )
 
@@ -187,8 +294,10 @@ async def list_messages(
     since_id: int = Query(0, ge=0),
     before_id: int = Query(0, ge=0),
     limit: int = Query(80, ge=1, le=200),
+    x_chat_key: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ):
+    _require_any_chat_key(x_chat_key)
     if before_id:
         query = (
             select(MicroChatMessage)
@@ -283,7 +392,14 @@ async def create_message(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Text body is required")
     if body.message_type != "text" and not body.attachment_url:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Attachment is required")
-    message = _build_message(body)
+    reply_to_id, quote_sender, quote_body, quote_type = await _snapshot_quote(db, body.reply_to_id)
+    message = _build_message(
+        body,
+        reply_to_id=reply_to_id,
+        quote_sender=quote_sender,
+        quote_body=quote_body,
+        quote_type=quote_type,
+    )
     db.add(message)
     await db.commit()
     await db.refresh(message)
@@ -311,6 +427,7 @@ async def create_message_with_file(
     sender_name: str = Form(..., min_length=1, max_length=32),
     sender_avatar: str = Form(default="", max_length=64),
     body: str = Form(default=""),
+    reply_to_id: int | None = Form(default=None),
     upload: UploadFile = File(...),
     x_chat_key: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
@@ -337,6 +454,7 @@ async def create_message_with_file(
         if thumbnail:
             (upload_dir / _thumb_name(stored_name)).write_bytes(thumbnail)
     message_type = _message_type_for_mime(content_type)
+    quote_id, quote_sender, quote_body, quote_type = await _snapshot_quote(db, reply_to_id)
     message = MicroChatMessage(
         sender_role=sender_role,
         sender_name=sender_name.strip(),
@@ -347,6 +465,10 @@ async def create_message_with_file(
         attachment_name=original_name,
         attachment_mime=content_type,
         attachment_size=len(data),
+        reply_to_id=quote_id,
+        quote_sender=quote_sender,
+        quote_body=quote_body,
+        quote_type=quote_type,
         created_at=datetime.now(timezone.utc),
     )
     db.add(message)
@@ -370,6 +492,7 @@ async def create_message_with_images(
     sender_name: str = Form(..., min_length=1, max_length=32),
     sender_avatar: str = Form(default="", max_length=64),
     body: str = Form(default="", max_length=2000),
+    reply_to_id: int | None = Form(default=None),
     uploads: list[UploadFile] = File(...),
     x_chat_key: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
@@ -407,6 +530,7 @@ async def create_message_with_images(
             (upload_dir / _thumb_name(stored_name)).write_bytes(thumbnail)
         urls.append(f"/api/uploads/micro-chat/{stored_name}")
 
+    quote_id, quote_sender, quote_body, quote_type = await _snapshot_quote(db, reply_to_id)
     message = MicroChatMessage(
         sender_role=sender_role,
         sender_name=sender_name.strip(),
@@ -414,6 +538,10 @@ async def create_message_with_images(
         body=body.strip(),
         message_type="gallery",
         attachment_urls=json.dumps(urls),
+        reply_to_id=quote_id,
+        quote_sender=quote_sender,
+        quote_body=quote_body,
+        quote_type=quote_type,
         created_at=datetime.now(timezone.utc),
     )
     db.add(message)

@@ -4,6 +4,7 @@
 无需后端存储；自定义表情是孩子上传的本地图片，落盘 uploads/stickers/。
 """
 
+import hashlib
 import io
 import json
 import mimetypes
@@ -69,8 +70,17 @@ class StickerListResponse(BaseModel):
 
 def _require_sticker_key(role: str, x_chat_key: str | None) -> None:
     expected = settings.CHILD_CHAT_KEY if role == "child" else settings.PARENT_CHAT_KEY
-    if not expected or x_chat_key != expected:
+    if (
+        not expected
+        or not x_chat_key
+        or len(x_chat_key) != len(expected)
+        or not secrets.compare_digest(x_chat_key, expected)
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid chat key")
+
+
+def _owner_key_hash(x_chat_key: str | None) -> str:
+    return hashlib.sha256((x_chat_key or "").encode("utf-8")).hexdigest()
 
 
 def _safe_name(suffix: str) -> str:
@@ -188,6 +198,7 @@ async def upload_stickers(
 
         sticker = Sticker(
             owner_role=sender_role,
+            owner_key_hash=_owner_key_hash(x_chat_key),
             url=f"/api/uploads/stickers/{stored_name}",
             thumbnail_url=(f"/api/uploads/stickers/{thumb_stored}" if thumb_stored else None),
             name="",
@@ -208,7 +219,13 @@ async def list_stickers(
 ):
     _require_sticker_key(owner_role, x_chat_key)
     result = await db.execute(
-        select(Sticker).where(Sticker.owner_role == owner_role).order_by(Sticker.id.desc()).limit(200)
+        select(Sticker)
+        .where(
+            Sticker.owner_role == owner_role,
+            Sticker.owner_key_hash == _owner_key_hash(x_chat_key),
+        )
+        .order_by(Sticker.id.desc())
+        .limit(200)
     )
     return StickerListResponse(items=[_sticker_out(s) for s in result.scalars().all()])
 
@@ -222,7 +239,11 @@ async def delete_sticker(
 ):
     _require_sticker_key(owner_role, x_chat_key)
     result = await db.execute(
-        select(Sticker).where(Sticker.id == sticker_id, Sticker.owner_role == owner_role)
+        select(Sticker).where(
+            Sticker.id == sticker_id,
+            Sticker.owner_role == owner_role,
+            Sticker.owner_key_hash == _owner_key_hash(x_chat_key),
+        )
     )
     sticker = result.scalar_one_or_none()
     if sticker is None:

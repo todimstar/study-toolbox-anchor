@@ -37,12 +37,15 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import org.json.JSONObject
 import java.io.File
 import java.io.ByteArrayOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
@@ -74,8 +77,118 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         createNotificationChannel()
         requestNotificationPermissionIfNeeded()
-        MicroChatPollWorker.enqueue(this)
+        if (!hasChildChatKey()) {
+            setContentView(createPairLayout())
+            return
+        }
+        enterApp()
+    }
 
+    private fun hasChildChatKey(): Boolean =
+        getSharedPreferences(NATIVE_PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_CHILD_CHAT_KEY, "")
+            .orEmpty()
+            .isNotBlank()
+
+    private fun storeChildChatKey(key: String) {
+        getSharedPreferences(NATIVE_PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_CHILD_CHAT_KEY, key)
+            .apply()
+    }
+
+    private fun createPairLayout(): View {
+        val title = TextView(this).apply {
+            text = "学习工具箱"
+            textSize = 24f
+            setTextColor(Color.rgb(34, 34, 34))
+            gravity = Gravity.CENTER
+        }
+        val subtitle = TextView(this).apply {
+            text = "请输入安装验证码"
+            textSize = 16f
+            setTextColor(Color.rgb(102, 112, 133))
+            gravity = Gravity.CENTER
+        }
+        val input = EditText(this).apply {
+            this.hint = "验证码"
+            textSize = 18f
+            setSingleLine(true)
+            gravity = Gravity.CENTER
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        }
+        val error = TextView(this).apply {
+            textSize = 14f
+            setTextColor(Color.rgb(199, 53, 53))
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+        }
+        val button = Button(this).apply {
+            text = "开始使用"
+            textSize = 16f
+        }
+        button.setOnClickListener {
+            val code = input.text.toString().trim()
+            if (code.isEmpty()) {
+                error.text = "请输入验证码"
+                error.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+            button.isEnabled = false
+            error.visibility = View.GONE
+            pickImagesExecutor.execute {
+                val result = requestPairKey(code)
+                mainHandler.post {
+                    button.isEnabled = true
+                    if (result.isNullOrBlank()) {
+                        error.text = "验证码不对，或暂时连不上"
+                        error.visibility = View.VISIBLE
+                    } else {
+                        storeChildChatKey(result)
+                        enterApp()
+                    }
+                }
+            }
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.WHITE)
+            setPadding(36.dp, 36.dp, 36.dp, 36.dp)
+            addView(title, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 16.dp })
+            addView(subtitle, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 24.dp })
+            addView(input, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 16.dp })
+            addView(error, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 16.dp })
+            addView(button, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+    }
+
+    private fun requestPairKey(code: String): String? {
+        return try {
+            val url = URL("${BuildConfig.TOOLBOX_URL}api/micro-chat/pair")
+            val payload = JSONObject().put("code", code).toString().toByteArray(Charsets.UTF_8)
+            val connection = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 10_000
+                readTimeout = 10_000
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            }
+            connection.outputStream.use { it.write(payload) }
+            if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
+            connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                JSONObject(reader.readText()).optString("chat_key").takeIf { it.isNotBlank() }
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun enterApp() {
+        MicroChatPollWorker.enqueue(this)
+        StudyToolboxApp.initAndBindAlias(this)
         webView = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -265,7 +378,7 @@ class MainActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        loadToolbox()
+        if (::webView.isInitialized) loadToolbox()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -294,6 +407,10 @@ class MainActivity : Activity() {
     }
 
     override fun onBackPressed() {
+        if (!::webView.isInitialized) {
+            super.onBackPressed()
+            return
+        }
         if (fullscreenView != null) {
             (webView.webChromeClient)?.onHideCustomView()
             return
@@ -538,7 +655,13 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun getAppVersion(): String = "0.1.2-anchor"
+        fun getAppVersion(): String = "0.1.4-anchor"
+
+        @JavascriptInterface
+        fun getChildChatKey(): String =
+            getSharedPreferences(NATIVE_PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(KEY_CHILD_CHAT_KEY, "")
+                .orEmpty()
 
         @JavascriptInterface
         fun setFullscreen(enabled: Boolean) {
@@ -910,6 +1033,7 @@ class MainActivity : Activity() {
         private const val CHAT_NOTIFICATION_CHANNEL_ID = "study_toolbox_chat_messages"
         private const val CHAT_NOTIFICATION_ID = 2001
         private const val NATIVE_PREFS_NAME = "study_toolbox_native_prefs"
+        private const val KEY_CHILD_CHAT_KEY = "child_chat_key"
         private const val KEY_LAST_NOTIFIED_PARENT_ID = "last_notified_parent_message_id"
         private const val WEB_LOG_TAG = "ToolboxWeb"
 

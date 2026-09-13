@@ -22,9 +22,17 @@ android {
         applicationId = "com.studytoolbox.anchor"
         minSdk = 29  // Android 10
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.1.2-anchor"
+        versionCode = 5
+        versionName = "0.1.4-anchor"
         buildConfigField("String", "TOOLBOX_URL", "\"https://toolbox.zakuku.top/\"")
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+
+        manifestPlaceholders["JPUSH_PKGNAME"] = applicationId as Any
+        manifestPlaceholders["JPUSH_APPKEY"] = "53ba1118e7072520f66fb10c"
+        manifestPlaceholders["JPUSH_CHANNEL"] = "developer-default"
     }
 
     buildTypes {
@@ -64,4 +72,5 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("cn.jiguang.sdk:jpush:6.2.1")
 }

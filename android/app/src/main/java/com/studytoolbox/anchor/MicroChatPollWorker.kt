@@ -50,12 +50,19 @@ class MicroChatPollWorker(
     }
 
     private fun fetchLatestParentMessage(): LatestMessage? {
+        val key = applicationContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_CHILD_CHAT_KEY, "")
+            .orEmpty()
+        if (key.isBlank()) return null
         val url = URL("${BuildConfig.TOOLBOX_URL}api/micro-chat/messages?limit=20")
         val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 10_000
             readTimeout = 10_000
+            setRequestProperty("X-Chat-Key", key)
         }
+        if (connection.responseCode == 403) return null
         connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
             val items = JSONObject(reader.readText()).optJSONArray("items") ?: return null
             var latest: LatestMessage? = null
@@ -127,6 +134,7 @@ class MicroChatPollWorker(
     companion object {
         private const val WORK_NAME = "study_toolbox_micro_chat_poll"
         private const val PREFS_NAME = "study_toolbox_native_prefs"
+        const val KEY_CHILD_CHAT_KEY = "child_chat_key"
         private const val KEY_LAST_SEEN_PARENT_ID = "last_seen_parent_message_id"
         private const val KEY_LAST_NOTIFIED_PARENT_ID = "last_notified_parent_message_id"
         private const val NOTIFICATION_CHANNEL_ID = "study_toolbox_chat_messages"

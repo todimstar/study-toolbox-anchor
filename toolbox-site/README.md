@@ -50,7 +50,8 @@ location ^~ /api/ {
 服务端环境变量参考 `server/.env.example`：
 
 - `PARENT_CHAT_KEY`：家长端发送消息时填写的密钥，不要写进网页源码。
-- `CHILD_CHAT_KEY`：孩子端发送消息用的密钥；当前静态页默认是 `child-chat-key-change-me`，如果服务端改了，`index.html` 里的 `childChatKey` 也要同步改。
+- `CHILD_CHAT_KEY`：孩子端口令，只放服务端 `.env`。孩子端 APK 通过首启安装码 `POST /api/micro-chat/pair` 换取后存在本机，网页用 `StudyToolbox.getChildChatKey()` 读取。不要写进 `index.html`。
+- `CHILD_PAIR_CODE`：孩子端 APK 首启验证码。空字符串 = 配对关闭。不要写进 APK / HTML。
 - `UPLOAD_DIR` / `MAX_UPLOAD_BYTES`：聊天附件保存目录和上传大小上限。
 
 ## 后续演进

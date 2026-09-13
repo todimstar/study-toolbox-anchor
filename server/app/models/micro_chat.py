@@ -23,4 +23,8 @@ class MicroChatMessage(Base):
     read_by_child = Column(Integer, nullable=False, default=0)   # 孩子是否已读
     recalled = Column(Integer, nullable=False, default=0)        # 是否已撤回
     recalled_at = Column(DateTime, nullable=True)                # 撤回时间
+    reply_to_id = Column(Integer, nullable=True, index=True)     # 引用的原消息 id
+    quote_sender = Column(String(32), nullable=True)             # 引用快照：原发送人
+    quote_body = Column(String(200), nullable=True)              # 引用快照：摘要
+    quote_type = Column(String(16), nullable=True)               # 引用快照：原消息类型
     created_at = Column(DateTime, server_default=func.now(), index=True)
